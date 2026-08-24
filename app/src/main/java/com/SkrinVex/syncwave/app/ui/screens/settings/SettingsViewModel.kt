@@ -3,10 +3,9 @@ package com.SkrinVex.syncwave.app.ui.screens.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.SkrinVex.syncwave.app.data.local.SessionDataStore
 import com.SkrinVex.syncwave.app.domain.model.Resource
-import com.SkrinVex.syncwave.app.domain.usecase.auth.CheckAuthStatusUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.GetCurrentUserUseCase
-import com.SkrinVex.syncwave.app.domain.usecase.auth.GetSavedSessionUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.GetServerUrlUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.LogoutUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.SaveServerUrlUseCase
@@ -18,22 +17,24 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
-sealed class SettingsEvent {
-    data object NavigateToAuth : SettingsEvent()
+sealed interface SettingsEvent {
+    object NavigateToAuth : SettingsEvent
 }
 
 class SettingsViewModel(
     private val getCurrentUserUseCase: GetCurrentUserUseCase,
     private val getSettingsUseCase: GetSettingsUseCase,
     private val getLibraryStatsUseCase: GetLibraryStatsUseCase,
-    private val getSavedSessionUseCase: GetSavedSessionUseCase,
     private val getServerUrlUseCase: GetServerUrlUseCase,
     private val saveServerUrlUseCase: SaveServerUrlUseCase,
-    private val checkAuthStatusUseCase: CheckAuthStatusUseCase,
-    private val logoutUseCase: LogoutUseCase
+    private val logoutUseCase: LogoutUseCase,
+    private val sessionDataStore: SessionDataStore
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -44,56 +45,61 @@ class SettingsViewModel(
 
     init {
         loadData()
+        observeAudioFocus()
+    }
+
+    private fun observeAudioFocus() {
+        viewModelScope.launch {
+            sessionDataStore.audioFocusEnabledFlow.collectLatest { enabled ->
+                _uiState.update { it.copy(isAudioFocusEnabled = enabled) }
+            }
+        }
     }
 
     fun loadData() {
         viewModelScope.launch {
-            val session = getSavedSessionUseCase()
-            val serverUrl = getServerUrlUseCase()
-            _uiState.update {
-                it.copy(
-                    user = session?.user,
-                    serverUrl = serverUrl,
-                    newServerUrl = serverUrl
-                )
-            }
+            _uiState.update { it.copy(isLoading = true) }
 
-            // Fetch live user profile
-            when (val uResult = getCurrentUserUseCase()) {
+            val url = getServerUrlUseCase()
+            _uiState.update { it.copy(serverUrl = url, newServerUrl = url) }
+
+            when (val userResult = getCurrentUserUseCase()) {
                 is Resource.Success -> {
-                    _uiState.update { it.copy(user = uResult.data) }
+                    _uiState.update { it.copy(user = userResult.data) }
                 }
                 is Resource.Error -> {}
                 Resource.Loading -> {}
             }
 
-            // Fetch library stats
-            when (val stResult = getLibraryStatsUseCase()) {
+            when (val settingsResult = getSettingsUseCase()) {
                 is Resource.Success -> {
-                    _uiState.update { it.copy(stats = stResult.data) }
+                    _uiState.update { it.copy(settings = settingsResult.data) }
                 }
                 is Resource.Error -> {}
                 Resource.Loading -> {}
             }
 
-            // Fetch server settings & diagnostics
-            when (val sResult = getSettingsUseCase()) {
+            when (val statsResult = getLibraryStatsUseCase()) {
                 is Resource.Success -> {
-                    _uiState.update { it.copy(settings = sResult.data) }
+                    _uiState.update { it.copy(stats = statsResult.data) }
                 }
                 is Resource.Error -> {}
                 Resource.Loading -> {}
             }
+
+            _uiState.update { it.copy(isLoading = false) }
+        }
+    }
+
+    fun toggleAudioFocus(enabled: Boolean) {
+        viewModelScope.launch {
+            sessionDataStore.setAudioFocusEnabled(enabled)
+            _uiState.update { it.copy(isAudioFocusEnabled = enabled) }
         }
     }
 
     fun openEditServerUrlModal() {
-        _uiState.update {
-            it.copy(
-                isEditServerUrlModalOpen = true,
-                newServerUrl = it.serverUrl
-            )
-        }
+        _uiState.update { it.copy(isEditServerUrlModalOpen = true, newServerUrl = it.serverUrl) }
     }
 
     fun closeEditServerUrlModal() {
@@ -105,42 +111,57 @@ class SettingsViewModel(
     }
 
     fun saveServerUrl() {
-        viewModelScope.launch {
-            val url = _uiState.value.newServerUrl.trim()
-            saveServerUrlUseCase(url)
-            val updatedUrl = getServerUrlUseCase()
-            _uiState.update {
-                it.copy(
-                    serverUrl = updatedUrl,
-                    isEditServerUrlModalOpen = false
-                )
+        val newUrl = _uiState.value.newServerUrl.trim()
+        if (newUrl.isNotBlank()) {
+            viewModelScope.launch {
+                saveServerUrlUseCase(newUrl)
+                _uiState.update {
+                    it.copy(
+                        serverUrl = newUrl,
+                        isEditServerUrlModalOpen = false,
+                        connectionTestResult = null
+                    )
+                }
+                testConnection()
             }
-            loadData()
         }
     }
 
     fun testConnection() {
         viewModelScope.launch {
             _uiState.update { it.copy(isTestingConnection = true, connectionTestResult = null) }
-            val url = _uiState.value.serverUrl
-            when (val res = checkAuthStatusUseCase(url)) {
-                is Resource.Success -> {
+            val url = _uiState.value.serverUrl.trimEnd('/') + "/api/v1/health"
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val request = Request.Builder().url(url).build()
+                val startTime = System.currentTimeMillis()
+                val response = client.newCall(request).execute()
+                val duration = System.currentTimeMillis() - startTime
+                if (response.isSuccessful) {
                     _uiState.update {
                         it.copy(
                             isTestingConnection = false,
-                            connectionTestResult = "Подключение успешно (SyncWave v1.0.0)"
+                            connectionTestResult = "Подключение успешно • ${duration} мс"
                         )
                     }
-                }
-                is Resource.Error -> {
+                } else {
                     _uiState.update {
                         it.copy(
                             isTestingConnection = false,
-                            connectionTestResult = res.message ?: "Ошибка подключения"
+                            connectionTestResult = "Ошибка ответа сервера: HTTP ${response.code}"
                         )
                     }
                 }
-                Resource.Loading -> {}
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isTestingConnection = false,
+                        connectionTestResult = "Ошибка соединения: ${e.localizedMessage ?: "Таймаут"}"
+                    )
+                }
             }
         }
     }
@@ -156,11 +177,10 @@ class SettingsViewModel(
         private val getCurrentUserUseCase: GetCurrentUserUseCase,
         private val getSettingsUseCase: GetSettingsUseCase,
         private val getLibraryStatsUseCase: GetLibraryStatsUseCase,
-        private val getSavedSessionUseCase: GetSavedSessionUseCase,
         private val getServerUrlUseCase: GetServerUrlUseCase,
         private val saveServerUrlUseCase: SaveServerUrlUseCase,
-        private val checkAuthStatusUseCase: CheckAuthStatusUseCase,
-        private val logoutUseCase: LogoutUseCase
+        private val logoutUseCase: LogoutUseCase,
+        private val sessionDataStore: SessionDataStore
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -168,11 +188,10 @@ class SettingsViewModel(
                 getCurrentUserUseCase,
                 getSettingsUseCase,
                 getLibraryStatsUseCase,
-                getSavedSessionUseCase,
                 getServerUrlUseCase,
                 saveServerUrlUseCase,
-                checkAuthStatusUseCase,
-                logoutUseCase
+                logoutUseCase,
+                sessionDataStore
             ) as T
         }
     }

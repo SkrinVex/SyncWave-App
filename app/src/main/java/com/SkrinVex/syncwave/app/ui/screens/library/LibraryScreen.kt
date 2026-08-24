@@ -1,5 +1,6 @@
 package com.SkrinVex.syncwave.app.ui.screens.library
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,12 +19,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Clear
@@ -32,7 +37,6 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
-import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -44,6 +48,8 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,20 +57,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.SkrinVex.syncwave.app.SyncWaveApplication
-import com.SkrinVex.syncwave.app.ui.components.StudioCard
+import com.SkrinVex.syncwave.app.ui.components.StudioSoundwaveLogo
 import com.SkrinVex.syncwave.app.ui.components.TrackCardItem
 import com.SkrinVex.syncwave.app.ui.components.TrackRowItem
 import com.SkrinVex.syncwave.app.ui.theme.StudioAccent
 import com.SkrinVex.syncwave.app.ui.theme.StudioBg
 import com.SkrinVex.syncwave.app.ui.theme.StudioBorder
 import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
-import com.SkrinVex.syncwave.app.ui.theme.StudioHover
 import com.SkrinVex.syncwave.app.ui.theme.StudioRed
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
@@ -75,7 +82,8 @@ import com.SkrinVex.syncwave.app.ui.theme.Zinc950
 
 @Composable
 fun LibraryScreen(
-    viewModel: LibraryViewModel
+    viewModel: LibraryViewModel,
+    modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val playerState by viewModel.playerManager.playerState.collectAsStateWithLifecycle()
@@ -83,18 +91,74 @@ fun LibraryScreen(
 
     var showSortMenu by remember { mutableStateOf(false) }
 
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+
+    // Infinite scroll detection for List View
+    val shouldLoadMoreList by remember {
+        derivedStateOf {
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            lastVisible >= uiState.tracks.size - 6 && uiState.hasMore && !uiState.isLoadingMore
+        }
+    }
+    LaunchedEffect(shouldLoadMoreList) {
+        if (shouldLoadMoreList) {
+            viewModel.loadNextPage()
+        }
+    }
+
+    // Infinite scroll detection for Grid View
+    val shouldLoadMoreGrid by remember {
+        derivedStateOf {
+            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            lastVisible >= uiState.tracks.size - 6 && uiState.hasMore && !uiState.isLoadingMore
+        }
+    }
+    LaunchedEffect(shouldLoadMoreGrid) {
+        if (shouldLoadMoreGrid) {
+            viewModel.loadNextPage()
+        }
+    }
+
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(StudioBg)
             .padding(top = 16.dp, start = 16.dp, end = 16.dp)
     ) {
+        // Header (Title and Status)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "Медиатека",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Zinc100
+                )
+                Text(
+                    text = "Загружено треков: ${uiState.tracks.size} из ${uiState.totalTracks}",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = Zinc400,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         // Search Bar
         OutlinedTextField(
             value = uiState.searchQuery,
             onValueChange = { viewModel.onSearchQueryChanged(it) },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Поиск по названию, артисту или альбому...", color = Zinc500, fontSize = 13.sp) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            placeholder = { Text("Поиск по трекам, авторам, альбомам...", fontSize = 13.sp, color = Zinc500) },
             leadingIcon = {
                 Icon(
                     imageVector = Icons.Default.Search,
@@ -144,7 +208,7 @@ fun LibraryScreen(
                         .clip(RoundedCornerShape(8.dp))
                         .background(StudioAccent)
                         .clickable { viewModel.playAll(false) }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -249,21 +313,21 @@ fun LibraryScreen(
                 ) {
                     Icon(
                         imageVector = if (uiState.sortOrder == "asc") Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                        contentDescription = "Порядок",
+                        contentDescription = "Порядок сортировки",
                         tint = Zinc400,
                         modifier = Modifier.size(16.dp)
                     )
                 }
 
-                // Grid / List Toggle
+                // View Mode Switcher (List / Grid)
                 IconButton(
                     onClick = { viewModel.toggleViewMode() },
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
-                        imageVector = if (uiState.viewMode == ViewMode.LIST) Icons.Default.GridView else Icons.Default.ViewList,
+                        imageVector = if (uiState.viewMode == ViewMode.LIST) Icons.Default.GridView else Icons.AutoMirrored.Filled.ViewList,
                         contentDescription = "Вид",
-                        tint = Zinc400,
+                        tint = StudioAccent,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -272,15 +336,14 @@ fun LibraryScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Playlist Filter Horizontal Chips
+        // Playlist Filter Chips (Horizontal Scroll)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // "All Tracks" Chip
-            val isAllSelected = uiState.selectedPlaylistId.isEmpty()
+            val isAllSelected = uiState.selectedPlaylistId.isBlank()
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
@@ -320,7 +383,7 @@ fun LibraryScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Content Area (Loading, Empty, List or Grid)
+        // Content Area (Loading with Logo, Empty, List or Grid with Infinite Scroll)
         if (uiState.isLoading && uiState.tracks.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -328,7 +391,21 @@ fun LibraryScreen(
                     .padding(bottom = 80.dp),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = StudioAccent, strokeWidth = 2.dp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    StudioSoundwaveLogo(
+                        size = 52.dp,
+                        isAnimated = true
+                    )
+                    Text(
+                        text = "Загрузка медиатеки...",
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = Zinc400
+                    )
+                }
             }
         } else if (uiState.tracks.isEmpty()) {
             Box(
@@ -367,21 +444,22 @@ fun LibraryScreen(
                         fontSize = 12.sp,
                         color = Zinc500,
                         modifier = Modifier.padding(horizontal = 32.dp),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        textAlign = TextAlign.Center
                     )
                 }
             }
         } else if (uiState.viewMode == ViewMode.GRID) {
             LazyVerticalGrid(
+                state = gridState,
                 columns = GridCells.Fixed(2),
                 contentPadding = PaddingValues(bottom = 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                itemsIndexed(uiState.tracks, key = { _, t -> t.id }) { index, track ->
-                    val coverUrl = SyncWaveApplication.instance.container.trackRepository.getCoverUrl(track.id, token ?: "")
+                itemsIndexed(uiState.tracks, key = { _, track -> track.id }) { index, track ->
                     val isCurrent = playerState.currentTrack?.id == track.id
+                    val coverUrl = SyncWaveApplication.instance.container.trackRepository.getCoverUrl(track.id, token ?: "")
 
                     TrackCardItem(
                         track = track,
@@ -391,16 +469,34 @@ fun LibraryScreen(
                         onClick = { viewModel.playTrack(track, index) }
                     )
                 }
+
+                if (uiState.isLoadingMore) {
+                    item(span = { GridItemSpan(2) }) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = StudioAccent,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    }
+                }
             }
         } else {
             LazyColumn(
+                state = listState,
                 contentPadding = PaddingValues(bottom = 120.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                itemsIndexed(uiState.tracks, key = { _, t -> t.id }) { index, track ->
-                    val coverUrl = SyncWaveApplication.instance.container.trackRepository.getCoverUrl(track.id, token ?: "")
+                itemsIndexed(uiState.tracks, key = { _, track -> track.id }) { index, track ->
                     val isCurrent = playerState.currentTrack?.id == track.id
+                    val coverUrl = SyncWaveApplication.instance.container.trackRepository.getCoverUrl(track.id, token ?: "")
 
                     TrackRowItem(
                         track = track,
@@ -412,26 +508,39 @@ fun LibraryScreen(
                         onDelete = { viewModel.confirmDeleteTrack(track) }
                     )
                 }
+
+                if (uiState.isLoadingMore) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = StudioAccent,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    }
+                }
             }
         }
     }
 
-    // Delete Track Dialog
+    // Delete Track Confirmation Dialog
     if (uiState.trackToDelete != null) {
+        val track = uiState.trackToDelete!!
         AlertDialog(
             onDismissRequest = { viewModel.dismissDeleteDialog() },
             containerColor = StudioSurface,
             title = {
-                Text(
-                    text = "Удалить трек?",
-                    color = Zinc100,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("Удаление трека", color = Zinc100, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             },
             text = {
                 Text(
-                    text = "Вы уверены, что хотите удалить \"${uiState.trackToDelete?.title}\"? Файл будет удален с сервера.",
+                    "Вы действительно хотите удалить '${track.title}' с сервера? Файл аудиозаписи будет удален безвозвратно.",
                     color = Zinc400,
                     fontSize = 13.sp
                 )

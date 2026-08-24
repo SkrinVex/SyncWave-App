@@ -3,6 +3,7 @@ package com.SkrinVex.syncwave.app.data.local
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -27,6 +28,7 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
         val KEY_TOKEN = stringPreferencesKey("jwt_token")
         val KEY_USER_JSON = stringPreferencesKey("user_json")
         val KEY_SERVER_URL = stringPreferencesKey("server_url")
+        val KEY_AUDIO_FOCUS = booleanPreferencesKey("audio_focus_enabled")
         const val DEFAULT_SERVER_URL = "https://syncwave.skrinvex.com"
     }
 
@@ -39,6 +41,9 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
     @Volatile
     private var _cachedUser: User? = null
 
+    @Volatile
+    private var _cachedAudioFocus: Boolean = true
+
     init {
         // Preload memory cache from DataStore asynchronously
         CoroutineScope(Dispatchers.IO).launch {
@@ -46,6 +51,7 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
                 val prefs = context.dataStore.data.first()
                 prefs[KEY_SERVER_URL]?.takeIf { it.isNotBlank() }?.let { _cachedServerUrl = it }
                 prefs[KEY_TOKEN]?.takeIf { it.isNotBlank() }?.let { _cachedToken = it }
+                prefs[KEY_AUDIO_FOCUS]?.let { _cachedAudioFocus = it }
                 prefs[KEY_USER_JSON]?.takeIf { it.isNotBlank() }?.let {
                     _cachedUser = gson.fromJson(it, User::class.java)
                 }
@@ -73,6 +79,16 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
             token
         }
 
+    val audioFocusEnabledFlow: Flow<Boolean> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences()) else throw exception
+        }
+        .map { preferences ->
+            val enabled = preferences[KEY_AUDIO_FOCUS] ?: true
+            _cachedAudioFocus = enabled
+            enabled
+        }
+
     val sessionFlow: Flow<AuthSession?> = context.dataStore.data
         .catch { exception ->
             if (exception is IOException) emit(emptyPreferences()) else throw exception
@@ -97,6 +113,8 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
 
     fun getTokenCached(): String? = _cachedToken
 
+    fun isAudioFocusEnabledCached(): Boolean = _cachedAudioFocus
+
     fun getSessionCached(): AuthSession? {
         val token = _cachedToken ?: return null
         val user = _cachedUser ?: return null
@@ -116,6 +134,13 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
         _cachedServerUrl = cleanUrl
         context.dataStore.edit { preferences ->
             preferences[KEY_SERVER_URL] = cleanUrl
+        }
+    }
+
+    suspend fun setAudioFocusEnabled(enabled: Boolean) {
+        _cachedAudioFocus = enabled
+        context.dataStore.edit { preferences ->
+            preferences[KEY_AUDIO_FOCUS] = enabled
         }
     }
 

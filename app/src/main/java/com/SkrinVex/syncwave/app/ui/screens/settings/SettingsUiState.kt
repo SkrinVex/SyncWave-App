@@ -6,9 +6,10 @@ import com.SkrinVex.syncwave.app.domain.model.User
 
 data class SettingsUiState(
     val user: User? = null,
-    val serverUrl: String = "",
     val settings: SystemSettings = SystemSettings(),
     val stats: TrackStats = TrackStats(),
+    val serverUrl: String = "",
+    val isAudioFocusEnabled: Boolean = true,
     val isLoading: Boolean = false,
     val isTestingConnection: Boolean = false,
     val connectionTestResult: String? = null,

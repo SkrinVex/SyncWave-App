@@ -137,6 +137,7 @@ class DependencyContainer(val context: Context) {
     val logoutUseCase by lazy { LogoutUseCase(authRepository) }
 
     val getTracksUseCase by lazy { GetTracksUseCase(trackRepository) }
+    val getAllReadyTracksUseCase by lazy { com.SkrinVex.syncwave.app.domain.usecase.track.GetAllReadyTracksUseCase(trackRepository) }
     val getLibraryStatsUseCase by lazy { GetLibraryStatsUseCase(trackRepository) }
     val deleteTrackUseCase by lazy { DeleteTrackUseCase(trackRepository) }
 
@@ -148,6 +149,8 @@ class DependencyContainer(val context: Context) {
     val getSyncProgressUseCase by lazy { GetSyncProgressUseCase(syncRepository) }
     val getSyncLogsUseCase by lazy { GetSyncLogsUseCase(syncRepository) }
     val triggerSyncUseCase by lazy { TriggerSyncUseCase(syncRepository) }
+    val cancelSyncUseCase by lazy { com.SkrinVex.syncwave.app.domain.usecase.sync.CancelSyncUseCase(syncRepository) }
+    val clearSyncLogsUseCase by lazy { com.SkrinVex.syncwave.app.domain.usecase.sync.ClearSyncLogsUseCase(syncRepository) }
 
     val getSettingsUseCase by lazy { GetSettingsUseCase(settingsRepository) }
 }

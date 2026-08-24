@@ -7,6 +7,7 @@ import com.SkrinVex.syncwave.app.domain.model.Resource
 import com.SkrinVex.syncwave.app.domain.model.Track
 import com.SkrinVex.syncwave.app.domain.usecase.playlist.GetPlaylistsUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.track.DeleteTrackUseCase
+import com.SkrinVex.syncwave.app.domain.usecase.track.GetAllReadyTracksUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.track.GetLibraryStatsUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.track.GetTracksUseCase
 import com.SkrinVex.syncwave.app.player.AudioPlayerManager
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
 
 class LibraryViewModel(
     private val getTracksUseCase: GetTracksUseCase,
+    private val getAllReadyTracksUseCase: GetAllReadyTracksUseCase,
     private val getLibraryStatsUseCase: GetLibraryStatsUseCase,
     private val getPlaylistsUseCase: GetPlaylistsUseCase,
     private val deleteTrackUseCase: DeleteTrackUseCase,
@@ -30,6 +32,11 @@ class LibraryViewModel(
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     private var searchJob: Job? = null
+    private var isFetchingPage = false
+
+    companion object {
+        const val PAGE_SIZE = 50
+    }
 
     init {
         loadData()
@@ -45,7 +52,7 @@ class LibraryViewModel(
 
             fetchStats()
             fetchPlaylists()
-            fetchTracks()
+            fetchTracks(page = 1, isInitial = true)
 
             _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
         }
@@ -71,7 +78,10 @@ class LibraryViewModel(
         }
     }
 
-    fun fetchTracks() {
+    fun fetchTracks(page: Int = 1, isInitial: Boolean = false) {
+        if (isFetchingPage) return
+        isFetchingPage = true
+
         viewModelScope.launch {
             val state = _uiState.value
             val result = getTracksUseCase(
@@ -79,25 +89,45 @@ class LibraryViewModel(
                 playlistId = state.selectedPlaylistId,
                 sortBy = state.sortBy,
                 order = state.sortOrder,
-                page = 1,
-                pageSize = 200
+                page = page,
+                pageSize = PAGE_SIZE
             )
 
             when (result) {
                 is Resource.Success -> {
+                    val newTracks = if (page == 1) result.data.tracks else state.tracks + result.data.tracks
+                    val hasMore = newTracks.size < result.data.total
+
                     _uiState.update {
                         it.copy(
-                            tracks = result.data.tracks,
+                            tracks = newTracks,
                             totalTracks = result.data.total,
+                            currentPage = page,
+                            hasMore = hasMore,
+                            isLoadingMore = false,
                             errorMessage = null
                         )
                     }
                 }
                 is Resource.Error -> {
-                    _uiState.update { it.copy(errorMessage = result.message) }
+                    _uiState.update {
+                        it.copy(
+                            errorMessage = result.message,
+                            isLoadingMore = false
+                        )
+                    }
                 }
                 Resource.Loading -> {}
             }
+            isFetchingPage = false
+        }
+    }
+
+    fun loadNextPage() {
+        val state = _uiState.value
+        if (state.hasMore && !isFetchingPage && !state.isLoading && !state.isLoadingMore) {
+            _uiState.update { it.copy(isLoadingMore = true) }
+            fetchTracks(page = state.currentPage + 1)
         }
     }
 
@@ -106,24 +136,24 @@ class LibraryViewModel(
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(350L) // Debounce
-            fetchTracks()
+            fetchTracks(page = 1, isInitial = false)
         }
     }
 
     fun selectPlaylist(playlistId: String) {
         _uiState.update { it.copy(selectedPlaylistId = playlistId) }
-        fetchTracks()
+        fetchTracks(page = 1, isInitial = false)
     }
 
     fun setSortBy(sortBy: String) {
         _uiState.update { it.copy(sortBy = sortBy) }
-        fetchTracks()
+        fetchTracks(page = 1, isInitial = false)
     }
 
     fun toggleSortOrder() {
         val nextOrder = if (_uiState.value.sortOrder == "asc") "desc" else "asc"
         _uiState.update { it.copy(sortOrder = nextOrder) }
-        fetchTracks()
+        fetchTracks(page = 1, isInitial = false)
     }
 
     fun toggleViewMode() {
@@ -132,14 +162,28 @@ class LibraryViewModel(
     }
 
     fun playTrack(track: Track, index: Int) {
-        val tracks = _uiState.value.tracks
-        playerManager.playTrackList(tracks, startIndex = index, shuffle = false)
+        viewModelScope.launch {
+            val playlistId = _uiState.value.selectedPlaylistId.ifBlank { null }
+            val fullReadyResult = getAllReadyTracksUseCase(playlistId)
+            val queueToUse = when (fullReadyResult) {
+                is Resource.Success -> if (fullReadyResult.data.isNotEmpty()) fullReadyResult.data else _uiState.value.tracks
+                else -> _uiState.value.tracks
+            }
+            playerManager.playTrack(track, customQueue = queueToUse)
+        }
     }
 
     fun playAll(shuffle: Boolean) {
-        val tracks = _uiState.value.tracks
-        if (tracks.isNotEmpty()) {
-            playerManager.playTrackList(tracks, startIndex = 0, shuffle = shuffle)
+        viewModelScope.launch {
+            val playlistId = _uiState.value.selectedPlaylistId.ifBlank { null }
+            val fullReadyResult = getAllReadyTracksUseCase(playlistId)
+            val queueToUse = when (fullReadyResult) {
+                is Resource.Success -> if (fullReadyResult.data.isNotEmpty()) fullReadyResult.data else _uiState.value.tracks
+                else -> _uiState.value.tracks
+            }
+            if (queueToUse.isNotEmpty()) {
+                playerManager.playTrackList(queueToUse, startIndex = 0, shuffle = shuffle)
+            }
         }
     }
 
@@ -175,6 +219,7 @@ class LibraryViewModel(
 
     class Factory(
         private val getTracksUseCase: GetTracksUseCase,
+        private val getAllReadyTracksUseCase: GetAllReadyTracksUseCase,
         private val getLibraryStatsUseCase: GetLibraryStatsUseCase,
         private val getPlaylistsUseCase: GetPlaylistsUseCase,
         private val deleteTrackUseCase: DeleteTrackUseCase,
@@ -184,6 +229,7 @@ class LibraryViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return LibraryViewModel(
                 getTracksUseCase,
+                getAllReadyTracksUseCase,
                 getLibraryStatsUseCase,
                 getPlaylistsUseCase,
                 deleteTrackUseCase,

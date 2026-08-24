@@ -1,5 +1,7 @@
 package com.SkrinVex.syncwave.app.ui.screens.settings
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,8 +25,10 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
@@ -37,6 +40,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -48,8 +53,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -67,7 +72,6 @@ import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
 import com.SkrinVex.syncwave.app.ui.theme.StudioEmerald
 import com.SkrinVex.syncwave.app.ui.theme.StudioRed
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
-import com.SkrinVex.syncwave.app.ui.theme.StudioWarn
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
 import com.SkrinVex.syncwave.app.ui.theme.Zinc300
 import com.SkrinVex.syncwave.app.ui.theme.Zinc400
@@ -79,6 +83,7 @@ fun SettingsScreen(
     onNavigateToAuth: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var showLogoutDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -106,14 +111,14 @@ fun SettingsScreen(
                 color = Zinc100
             )
             Text(
-                text = "Параметры системы, хранилище и диагностика",
+                text = "Параметры системы, хранилище и воспроизведение",
                 fontSize = 12.sp,
                 color = Zinc400,
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
 
-        // Section 1: Library & Storage Statistics Card (Moved from LibraryView)
+        // Section 1: Library & Storage Statistics Card
         StudioCard(
             modifier = Modifier.fillMaxWidth(),
             backgroundColor = StudioSurface,
@@ -163,7 +168,7 @@ fun SettingsScreen(
                 ) {
                     MetricMiniCard(
                         title = "Объем аудиофайлов",
-                        value = uiState.stats.formattedTotalStorageSize,
+                        value = uiState.settings.formattedUserStorage,
                         icon = Icons.Default.Storage,
                         modifier = Modifier.weight(1f)
                     )
@@ -176,20 +181,24 @@ fun SettingsScreen(
                 }
 
                 // Storage Quota Progress Bar
-                if (uiState.settings.userStorageQuotaBytes > 0) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Использование дисковой квоты", fontSize = 11.sp, color = Zinc400)
-                            Text(
-                                text = "${uiState.settings.formattedUserStorage} / ${uiState.settings.formattedUserQuota} (${(uiState.settings.quotaUsageFraction * 100).toInt()}%)",
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = Zinc300
-                            )
-                        }
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Дисковая квота пользователя", fontSize = 11.sp, color = Zinc400)
+                        Text(
+                            text = if (uiState.settings.userStorageQuotaBytes > 0) {
+                                "${uiState.settings.formattedUserStorage} / ${uiState.settings.formattedUserQuota} (${uiState.settings.quotaUsagePercent}%)"
+                            } else {
+                                "${uiState.settings.formattedUserStorage} (Безлимитно)"
+                            },
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Zinc300
+                        )
+                    }
+                    if (uiState.settings.userStorageQuotaBytes > 0) {
                         LinearProgressIndicator(
                             progress = { uiState.settings.quotaUsageFraction },
                             modifier = Modifier
@@ -204,7 +213,66 @@ fun SettingsScreen(
             }
         }
 
-        // Section 2: Server Connection Card
+        // Section 2: Audio Focus & Playback Settings
+        StudioCard(
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = StudioSurface,
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GraphicEq,
+                        contentDescription = null,
+                        tint = StudioAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Воспроизведение и Аудио",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Zinc100
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(
+                            text = "Автопауза при аудиофокусе (Audio Focus)",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Zinc100
+                        )
+                        Text(
+                            text = "Приостанавливать музыку при голосовом вводе клавиатуры, микрофоне и звонках",
+                            fontSize = 11.sp,
+                            color = Zinc400,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
+                    Switch(
+                        checked = uiState.isAudioFocusEnabled,
+                        onCheckedChange = { viewModel.toggleAudioFocus(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Zinc100,
+                            checkedTrackColor = StudioAccent,
+                            uncheckedThumbColor = Zinc500,
+                            uncheckedTrackColor = StudioElevated
+                        )
+                    )
+                }
+            }
+        }
+
+        // Section 3: Server Connection Card
         StudioCard(
             modifier = Modifier.fillMaxWidth(),
             backgroundColor = StudioSurface,
@@ -324,7 +392,7 @@ fun SettingsScreen(
             }
         }
 
-        // Section 3: System Information & Diagnostics (Matching Web Diag)
+        // Section 4: System Information & Diagnostics
         StudioCard(
             modifier = Modifier.fillMaxWidth(),
             backgroundColor = StudioSurface,
@@ -359,7 +427,7 @@ fun SettingsScreen(
             }
         }
 
-        // Section 4: User Profile & Logout
+        // Section 5: User Profile & Logout
         StudioCard(
             modifier = Modifier.fillMaxWidth(),
             backgroundColor = StudioSurface,
@@ -425,15 +493,51 @@ fun SettingsScreen(
             }
         }
 
-        // Project Footer
-        Text(
-            text = "SyncWave • v1.0.0 • Studio Engine",
-            fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace,
-            color = Zinc500,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            textAlign = TextAlign.Center
-        )
+        // Section 6: Project Footer (Exact Web Parity)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text("SyncWave", color = Zinc300, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text("•", color = Zinc500, fontSize = 12.sp)
+                Text("MIT License", color = Zinc500, fontSize = 12.sp)
+                Text("•", color = Zinc500, fontSize = 12.sp)
+                Text("v1.0.0", color = Zinc500, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            }
+
+            // GitHub Repository Link Button (Matching Web)
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/SkrinVex/SyncWave"))
+                        context.startActivity(intent)
+                    }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Code,
+                    contentDescription = "GitHub",
+                    tint = StudioAccent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "GitHub Repository",
+                    color = StudioAccent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
     }
 
     // Edit Server URL Dialog

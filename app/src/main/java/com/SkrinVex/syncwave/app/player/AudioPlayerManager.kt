@@ -1,10 +1,17 @@
 package com.SkrinVex.syncwave.app.player
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
@@ -18,6 +25,7 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
+import com.SkrinVex.syncwave.app.MainActivity
 import com.SkrinVex.syncwave.app.data.local.SessionDataStore
 import com.SkrinVex.syncwave.app.domain.model.Track
 import com.SkrinVex.syncwave.app.domain.repository.TrackRepository
@@ -28,6 +36,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -42,7 +51,8 @@ class AudioPlayerManager(
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     var exoPlayer: ExoPlayer? = null
         private set
-    private var mediaSession: MediaSession? = null
+    var mediaSession: MediaSession? = null
+        private set
     private var progressJob: Job? = null
     private var simpleCache: SimpleCache? = null
 
@@ -50,7 +60,25 @@ class AudioPlayerManager(
     val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
 
     init {
+        createNotificationChannel()
         setupCacheAndPlayer()
+        observeAudioFocusSetting()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channelId = "syncwave_playback_channel"
+            val channelName = "SyncWave Воспроизведение"
+            val channelDesc = "Системное медиа-уведомление SyncWave"
+            val importance = NotificationManager.IMPORTANCE_LOW
+            val channel = NotificationChannel(channelId, channelName, importance).apply {
+                description = channelDesc
+                setShowBadge(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            }
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            notificationManager?.createNotificationChannel(channel)
+        }
     }
 
     private fun setupCacheAndPlayer() {
@@ -78,8 +106,17 @@ class AudioPlayerManager(
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
             .setDataSourceFactory(dataSourceFactory)
 
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .build()
+
+        val handleAudioFocus = sessionDataStore.isAudioFocusEnabledCached()
+
         val player = ExoPlayer.Builder(context)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setAudioAttributes(audioAttributes, handleAudioFocus)
+            .setHandleAudioBecomingNoisy(true)
             .build()
 
         player.addListener(object : Player.Listener {
@@ -87,7 +124,7 @@ class AudioPlayerManager(
                 _playerState.update { it.copy(isPlaying = isPlaying) }
                 if (isPlaying) {
                     startProgressUpdates()
-                    startMediaService()
+                    startMediaServiceSafely()
                 } else {
                     stopProgressUpdates()
                 }
@@ -96,14 +133,20 @@ class AudioPlayerManager(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
-                        _playerState.update { it.copy(isBuffering = true) }
+                        _playerState.update {
+                            it.copy(
+                                isBuffering = true,
+                                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L)
+                            )
+                        }
                     }
                     Player.STATE_READY -> {
                         _playerState.update {
                             it.copy(
                                 isBuffering = false,
                                 durationMs = player.duration.coerceAtLeast(0L),
-                                currentPositionMs = player.currentPosition.coerceAtLeast(0L)
+                                currentPositionMs = player.currentPosition.coerceAtLeast(0L),
+                                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L)
                             )
                         }
                     }
@@ -124,16 +167,82 @@ class AudioPlayerManager(
         exoPlayer = player
 
         try {
-            mediaSession = MediaSession.Builder(context, player)
+            val sessionIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                sessionIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+
+            val forwardingPlayer = object : ForwardingPlayer(player) {
+                override fun getAvailableCommands(): Player.Commands {
+                    return super.getAvailableCommands().buildUpon()
+                        .add(COMMAND_SEEK_TO_NEXT)
+                        .add(COMMAND_SEEK_TO_PREVIOUS)
+                        .add(COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                        .add(COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                        .add(COMMAND_PLAY_PAUSE)
+                        .build()
+                }
+
+                override fun isCommandAvailable(command: Int): Boolean {
+                    return when (command) {
+                        COMMAND_SEEK_TO_NEXT,
+                        COMMAND_SEEK_TO_PREVIOUS,
+                        COMMAND_SEEK_TO_NEXT_MEDIA_ITEM,
+                        COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM,
+                        COMMAND_PLAY_PAUSE -> true
+                        else -> super.isCommandAvailable(command)
+                    }
+                }
+
+                override fun seekToNext() {
+                    this@AudioPlayerManager.playNext()
+                }
+
+                override fun seekToNextMediaItem() {
+                    this@AudioPlayerManager.playNext()
+                }
+
+                override fun seekToPrevious() {
+                    this@AudioPlayerManager.playPrevious()
+                }
+
+                override fun seekToPreviousMediaItem() {
+                    this@AudioPlayerManager.playPrevious()
+                }
+            }
+
+            mediaSession = MediaSession.Builder(context, forwardingPlayer)
                 .setId("SyncWaveAudioSession")
+                .setSessionActivity(pendingIntent)
                 .build()
         } catch (_: Exception) {}
     }
 
-    private fun startMediaService() {
+    private fun observeAudioFocusSetting() {
+        scope.launch {
+            sessionDataStore.audioFocusEnabledFlow.collectLatest { enabled ->
+                val audioAttributes = AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                    .build()
+                exoPlayer?.setAudioAttributes(audioAttributes, enabled)
+            }
+        }
+    }
+
+    fun startMediaServiceSafely() {
         try {
             val intent = Intent(context, SyncWaveMediaService::class.java)
-            ContextCompat.startForegroundService(context, intent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(context, intent)
+            } else {
+                context.startService(intent)
+            }
         } catch (_: Exception) {}
     }
 
@@ -154,7 +263,7 @@ class AudioPlayerManager(
         playTrack(effectiveList[effectiveIndex])
     }
 
-    fun playTrack(track: Track) {
+    fun playTrack(track: Track, customQueue: List<Track>? = null) {
         val token = sessionDataStore.getTokenCached() ?: ""
         val streamUrl = trackRepository.getStreamUrl(track.id, token)
         val coverUrl = trackRepository.getCoverUrl(track.id, token)
@@ -172,10 +281,16 @@ class AudioPlayerManager(
             .setMediaMetadata(mediaMetadata)
             .build()
 
+        val queueToSet = customQueue ?: _playerState.value.queue.ifEmpty { listOf(track) }
+        val idx = queueToSet.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+
         _playerState.update {
             it.copy(
                 currentTrack = track,
+                queue = queueToSet,
+                currentIndex = idx,
                 currentPositionMs = 0L,
+                bufferedPositionMs = 0L,
                 durationMs = (track.duration * 1000L).coerceAtLeast(0L),
                 isBuffering = true
             )
@@ -188,6 +303,8 @@ class AudioPlayerManager(
             player.prepare()
             player.play()
         }
+
+        startMediaServiceSafely()
     }
 
     fun skipToQueueItem(index: Int) {
@@ -195,6 +312,59 @@ class AudioPlayerManager(
         if (index in queue.indices) {
             _playerState.update { it.copy(currentIndex = index) }
             playTrack(queue[index])
+        }
+    }
+
+    fun removeFromQueue(index: Int) {
+        val state = _playerState.value
+        if (index !in state.queue.indices) return
+
+        val newQueue = state.queue.toMutableList()
+        newQueue.removeAt(index)
+
+        if (newQueue.isEmpty()) {
+            stopPlayback()
+            return
+        }
+
+        val newIndex = when {
+            index < state.currentIndex -> state.currentIndex - 1
+            index == state.currentIndex -> {
+                val nextIdx = index.coerceAtMost(newQueue.lastIndex)
+                playTrack(newQueue[nextIdx])
+                nextIdx
+            }
+            else -> state.currentIndex
+        }
+
+        _playerState.update {
+            it.copy(queue = newQueue, currentIndex = newIndex)
+        }
+    }
+
+    fun reshuffleQueue() {
+        val state = _playerState.value
+        val curTrack = state.currentTrack ?: return
+        val remaining = (state.queue - curTrack).shuffled()
+        val newQueue = listOf(curTrack) + remaining
+
+        _playerState.update {
+            it.copy(
+                queue = newQueue,
+                currentIndex = 0,
+                isShuffle = true
+            )
+        }
+    }
+
+    fun clearQueue() {
+        val state = _playerState.value
+        val curTrack = state.currentTrack ?: return
+        _playerState.update {
+            it.copy(
+                queue = listOf(curTrack),
+                currentIndex = 0
+            )
         }
     }
 
@@ -207,6 +377,7 @@ class AudioPlayerManager(
                 player.seekTo(0)
             }
             player.play()
+            startMediaServiceSafely()
         }
     }
 
@@ -230,23 +401,40 @@ class AudioPlayerManager(
 
     fun playPrevious() {
         val state = _playerState.value
-        val player = exoPlayer ?: return
-
-        if (player.currentPosition > 3000L) {
-            player.seekTo(0)
-            return
-        }
-
         val queue = state.queue
         if (queue.isEmpty()) return
 
         var prevIndex = state.currentIndex - 1
         if (prevIndex < 0) {
-            prevIndex = if (state.repeatMode == RepeatMode.ALL) queue.size - 1 else 0
+            if (state.repeatMode == RepeatMode.ALL) {
+                prevIndex = queue.size - 1
+            } else {
+                // First track in queue, rewind to start
+                exoPlayer?.seekTo(0)
+                _playerState.update { it.copy(currentPositionMs = 0L) }
+                return
+            }
         }
 
         _playerState.update { it.copy(currentIndex = prevIndex) }
         playTrack(queue[prevIndex])
+    }
+
+    fun stopPlayback() {
+        stopProgressUpdates()
+        exoPlayer?.stop()
+        exoPlayer?.clearMediaItems()
+        _playerState.update {
+            it.copy(
+                currentTrack = null,
+                isPlaying = false,
+                isBuffering = false,
+                currentPositionMs = 0L,
+                bufferedPositionMs = 0L,
+                queue = emptyList(),
+                currentIndex = -1
+            )
+        }
     }
 
     fun seekTo(positionMs: Long) {
@@ -300,6 +488,7 @@ class AudioPlayerManager(
                         _playerState.update {
                             it.copy(
                                 currentPositionMs = player.currentPosition.coerceAtLeast(0L),
+                                bufferedPositionMs = player.bufferedPosition.coerceAtLeast(0L),
                                 durationMs = player.duration.coerceAtLeast(0L)
                             )
                         }

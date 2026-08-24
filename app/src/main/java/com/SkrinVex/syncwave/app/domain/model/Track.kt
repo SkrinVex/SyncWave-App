@@ -35,9 +35,14 @@ data class Track(
     val formattedDuration: String
         get() {
             if (duration <= 0) return "0:00"
-            val m = duration / 60
+            val h = duration / 3600
+            val m = (duration % 3600) / 60
             val s = duration % 60
-            return String.format("%d:%02d", m, s)
+            return if (h > 0) {
+                String.format("%d:%02d:%02d", h, m, s)
+            } else {
+                String.format("%d:%02d", m, s)
+            }
         }
 
     val formattedSize: String

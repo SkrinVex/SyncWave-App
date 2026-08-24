@@ -3,6 +3,7 @@ package com.SkrinVex.syncwave.app.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,10 +24,15 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,12 +53,15 @@ fun MiniPlayerBar(
     onExpand: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val track = playerState.currentTrack ?: return
     val progressFraction = if (playerState.durationMs > 0) {
         (playerState.currentPositionMs.toFloat() / playerState.durationMs.toFloat()).coerceIn(0f, 1f)
     } else 0f
+
+    var totalVerticalDrag by remember { mutableFloatStateOf(0f) }
 
     Box(
         modifier = modifier
@@ -61,6 +70,24 @@ fun MiniPlayerBar(
             .clip(RoundedCornerShape(14.dp))
             .background(StudioSurface)
             .border(1.dp, StudioBorder, RoundedCornerShape(14.dp))
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onDragStart = { totalVerticalDrag = 0f },
+                    onDragEnd = {
+                        if (totalVerticalDrag < -40f) {
+                            onExpand() // Swipe Up -> Expand Full Player
+                        } else if (totalVerticalDrag > 40f) {
+                            onDismiss() // Swipe Down -> Stop & Close Playback
+                        }
+                        totalVerticalDrag = 0f
+                    },
+                    onDragCancel = { totalVerticalDrag = 0f },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        totalVerticalDrag += dragAmount
+                    }
+                )
+            }
             .clickable(onClick = onExpand)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {

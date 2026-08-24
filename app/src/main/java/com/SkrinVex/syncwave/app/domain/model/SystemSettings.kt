@@ -1,5 +1,7 @@
 package com.SkrinVex.syncwave.app.domain.model
 
+import java.util.Locale
+
 data class SystemSettings(
     val httpProxy: String = "",
     val audioFormat: String = "opus",
@@ -24,42 +26,39 @@ data class SystemSettings(
     val hostDiskFreeBytes: Long = 0L,
     val isAdmin: Boolean = false
 ) {
+    val effectiveUserUsageBytes: Long
+        get() = if (userStorageUsageBytes > 0) userStorageUsageBytes else storageUsageBytes
+
     val formattedUserStorage: String
-        get() {
-            val mb = userStorageUsageBytes.toDouble() / (1024 * 1024)
-            return if (mb > 1024) {
-                String.format("%.2f GB", mb / 1024)
-            } else {
-                String.format("%.1f MB", mb)
-            }
-        }
+        get() = formatBytes(effectiveUserUsageBytes)
 
     val formattedUserQuota: String
-        get() {
-            if (userStorageQuotaBytes <= 0) return "Безлимитно"
-            val gb = userStorageQuotaBytes.toDouble() / (1024 * 1024 * 1024)
-            return String.format("%.1f GB", gb)
-        }
+        get() = if (userStorageQuotaBytes <= 0) "Безлимитно" else formatBytes(userStorageQuotaBytes)
 
     val quotaUsageFraction: Float
         get() {
             if (userStorageQuotaBytes <= 0) return 0f
-            return (userStorageUsageBytes.toFloat() / userStorageQuotaBytes.toFloat()).coerceIn(0f, 1f)
+            return (effectiveUserUsageBytes.toFloat() / userStorageQuotaBytes.toFloat()).coerceIn(0f, 1f)
+        }
+
+    val quotaUsagePercent: Int
+        get() {
+            if (userStorageQuotaBytes <= 0) return 0
+            return ((effectiveUserUsageBytes.toDouble() / userStorageQuotaBytes.toDouble()) * 100).toInt().coerceIn(0, 100)
         }
 
     val formattedDbSize: String
-        get() {
-            val kb = databaseSizeBytes.toDouble() / 1024
-            return if (kb > 1024) {
-                String.format("%.2f MB", kb / 1024)
-            } else {
-                String.format("%.1f KB", kb)
-            }
-        }
+        get() = formatBytes(databaseSizeBytes)
 
     val formattedHostDiskFree: String
-        get() {
-            val gb = hostDiskFreeBytes.toDouble() / (1024 * 1024 * 1024)
-            return String.format("%.1f GB свободно", gb)
-        }
+        get() = "${formatBytes(hostDiskFreeBytes)} свободно"
+}
+
+fun formatBytes(bytes: Long): String {
+    if (bytes <= 0L) return "0 B"
+    val k = 1024.0
+    val sizes = arrayOf("B", "KB", "MB", "GB", "TB")
+    val i = (Math.log(bytes.toDouble()) / Math.log(k)).toInt().coerceIn(0, sizes.lastIndex)
+    val value = bytes.toDouble() / Math.pow(k, i.toDouble())
+    return String.format(Locale.US, "%.1f %s", value, sizes[i])
 }

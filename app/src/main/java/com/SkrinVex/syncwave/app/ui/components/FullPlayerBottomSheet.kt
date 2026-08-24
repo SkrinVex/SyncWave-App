@@ -1,8 +1,6 @@
 package com.SkrinVex.syncwave.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,22 +11,26 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
@@ -68,6 +70,8 @@ import com.SkrinVex.syncwave.app.ui.theme.StudioAccent
 import com.SkrinVex.syncwave.app.ui.theme.StudioBg
 import com.SkrinVex.syncwave.app.ui.theme.StudioBorder
 import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
+import com.SkrinVex.syncwave.app.ui.theme.StudioHover
+import com.SkrinVex.syncwave.app.ui.theme.StudioRed
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
 import com.SkrinVex.syncwave.app.ui.theme.Zinc300
@@ -80,6 +84,7 @@ import com.SkrinVex.syncwave.app.ui.theme.Zinc950
 fun FullPlayerBottomSheet(
     playerState: PlayerState,
     coverUrl: String,
+    getTrackCoverUrl: (String) -> String,
     onDismiss: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -87,7 +92,10 @@ fun FullPlayerBottomSheet(
     onSeek: (Long) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
-    onSelectQueueTrack: ((Int) -> Unit)? = null
+    onSelectQueueTrack: ((Int) -> Unit)? = null,
+    onRemoveFromQueue: ((Int) -> Unit)? = null,
+    onReshuffleQueue: (() -> Unit)? = null,
+    onClearQueue: (() -> Unit)? = null
 ) {
     val track = playerState.currentTrack ?: return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -103,41 +111,55 @@ fun FullPlayerBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = StudioBg,
+        scrimColor = Color.Black.copy(alpha = 0.75f),
         dragHandle = null,
-        modifier = Modifier.fillMaxHeight(0.94f)
+        modifier = Modifier
+            .fillMaxSize()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .background(StudioBg)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(top = 8.dp, start = 20.dp, end = 20.dp, bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header Bar
+            // Header Bar with Top Inset Spacing
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
+                // Dismiss Button
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(StudioElevated)
+                ) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Скрыть плеер",
-                        tint = Zinc400,
-                        modifier = Modifier.size(28.dp)
+                        contentDescription = "Свернуть плеер",
+                        tint = Zinc100,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = if (isQueueVisible) "Очередь воспроизведения" else "Сейчас играет",
-                        fontSize = 12.sp,
+                        fontSize = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = Zinc400
+                        color = Zinc100
                     )
                     if (playerState.queue.isNotEmpty()) {
                         Text(
                             text = "Трек ${playerState.currentIndex + 1} из ${playerState.queue.size}",
-                            fontSize = 10.sp,
+                            fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace,
                             color = StudioAccent
                         )
@@ -148,32 +170,187 @@ fun FullPlayerBottomSheet(
                 IconButton(
                     onClick = { isQueueVisible = !isQueueVisible },
                     modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isQueueVisible) StudioAccent.copy(alpha = 0.2f) else Color.Transparent)
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(if (isQueueVisible) StudioAccent.copy(alpha = 0.25f) else StudioElevated)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.QueueMusic,
+                        imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                         contentDescription = "Очередь",
-                        tint = if (isQueueVisible) StudioAccent else Zinc400,
-                        modifier = Modifier.size(22.dp)
+                        tint = if (isQueueVisible) StudioAccent else Zinc100,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             if (isQueueVisible) {
-                // Queue List View
+                // Queue Content View (Matching Web QueueDrawer)
                 Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    Text(
-                        text = "Далее в очереди (${playerState.queue.size}):",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Zinc300,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
+                    // Queue Action Toolbar
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "Треков:",
+                                fontSize = 12.sp,
+                                color = Zinc400
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(StudioElevated)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "${playerState.queue.size}",
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = StudioAccent
+                                )
+                            }
+                        }
 
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Reshuffle Queue Button (Like Web)
+                            if (playerState.queue.size > 1) {
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(StudioAccent.copy(alpha = 0.15f))
+                                        .border(1.dp, StudioAccent.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                        .clickable { onReshuffleQueue?.invoke() }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Shuffle,
+                                        contentDescription = "Перемешать",
+                                        tint = StudioAccent,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "Перемешать",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = StudioAccent
+                                    )
+                                }
+                            }
+
+                            // Clear Queue Button
+                            if (playerState.queue.size > 1) {
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(StudioElevated)
+                                        .clickable { onClearQueue?.invoke() }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Очистить",
+                                        fontSize = 11.sp,
+                                        color = Zinc400
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Now Playing Mini Banner
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(StudioElevated)
+                            .border(1.dp, StudioAccent.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                            .padding(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(StudioSurface),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    AsyncImage(
+                                        model = coverUrl,
+                                        contentDescription = track.title,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    if (playerState.isPlaying) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.45f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            StudioEqualizerAnimation(
+                                                isPlaying = true,
+                                                maxHeight = 11.dp,
+                                                barWidth = 2.dp,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "СЕЙЧАС ИГРАЕТ",
+                                        fontSize = 9.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = StudioAccent
+                                    )
+                                    Text(
+                                        text = track.title,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Zinc100,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = track.formattedDuration,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Zinc400,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Queue Track List
                     LazyColumn(
                         contentPadding = PaddingValues(bottom = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -181,15 +358,20 @@ fun FullPlayerBottomSheet(
                     ) {
                         itemsIndexed(playerState.queue, key = { index, t -> "${t.id}_$index" }) { idx, qTrack ->
                             val isCurrent = idx == playerState.currentIndex
+                            val qCoverUrl = getTrackCoverUrl(qTrack.id)
 
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (isCurrent) StudioElevated else StudioSurface)
-                                    .border(1.dp, if (isCurrent) StudioAccent.copy(alpha = 0.5f) else StudioBorder, RoundedCornerShape(10.dp))
+                                    .background(if (isCurrent) StudioHover else StudioSurface)
+                                    .border(
+                                        1.dp,
+                                        if (isCurrent) StudioAccent.copy(alpha = 0.5f) else StudioBorder,
+                                        RoundedCornerShape(10.dp)
+                                    )
                                     .clickable { onSelectQueueTrack?.invoke(idx) }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    .padding(horizontal = 10.dp, vertical = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
@@ -197,14 +379,15 @@ fun FullPlayerBottomSheet(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.weight(1f)
                                 ) {
+                                    // Index
                                     Box(
-                                        modifier = Modifier.width(24.dp),
+                                        modifier = Modifier.width(22.dp),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (isCurrent) {
                                             StudioEqualizerAnimation(
                                                 isPlaying = playerState.isPlaying,
-                                                maxHeight = 12.dp,
+                                                maxHeight = 11.dp,
                                                 barWidth = 2.dp,
                                                 color = StudioAccent
                                             )
@@ -218,9 +401,28 @@ fun FullPlayerBottomSheet(
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
 
-                                    Column {
+                                    // Thumbnail Cover Art in Queue
+                                    Box(
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(StudioElevated)
+                                            .border(0.5.dp, StudioBorder, RoundedCornerShape(6.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        AsyncImage(
+                                            model = qCoverUrl,
+                                            contentDescription = qTrack.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = qTrack.title,
                                             fontSize = 12.sp,
@@ -239,12 +441,30 @@ fun FullPlayerBottomSheet(
                                     }
                                 }
 
-                                Text(
-                                    text = qTrack.formattedDuration,
-                                    fontSize = 10.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Zinc500
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = qTrack.formattedDuration,
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Zinc500
+                                    )
+
+                                    // Remove from Queue Button
+                                    IconButton(
+                                        onClick = { onRemoveFromQueue?.invoke(idx) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Удалить из очереди",
+                                            tint = Zinc500,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -255,17 +475,17 @@ fun FullPlayerBottomSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(0.88f)
+                            .fillMaxWidth(0.92f)
                             .aspectRatio(1f)
-                            .shadow(24.dp, RoundedCornerShape(20.dp), spotColor = StudioAccent.copy(alpha = 0.35f))
-                            .clip(RoundedCornerShape(20.dp))
+                            .shadow(28.dp, RoundedCornerShape(22.dp), spotColor = StudioAccent.copy(alpha = 0.45f))
+                            .clip(RoundedCornerShape(22.dp))
                             .background(StudioElevated)
-                            .border(1.dp, StudioBorder, RoundedCornerShape(20.dp)),
+                            .border(1.dp, StudioBorder, RoundedCornerShape(22.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
@@ -277,7 +497,7 @@ fun FullPlayerBottomSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
                 // Title & Artist with Marquee Text
                 Column(
@@ -304,24 +524,13 @@ fun FullPlayerBottomSheet(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Seek Scrubber Row & Timers
+                // Custom Studio Audio Scrubber with Buffering Bar
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    Slider(
-                        value = currentMs.toFloat().coerceIn(0f, totalMs.toFloat()),
-                        onValueChange = {
-                            isSeeking = true
-                            seekPosition = it
-                        },
-                        onValueChangeFinished = {
-                            onSeek(seekPosition.toLong())
-                            isSeeking = false
-                        },
-                        valueRange = 0f..totalMs.toFloat(),
-                        colors = SliderDefaults.colors(
-                            thumbColor = Zinc100,
-                            activeTrackColor = StudioAccent,
-                            inactiveTrackColor = StudioElevated
-                        ),
+                    StudioAudioScrubber(
+                        currentPositionMs = currentMs,
+                        bufferedPositionMs = playerState.bufferedPositionMs,
+                        durationMs = totalMs,
+                        onSeek = onSeek,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -443,7 +652,7 @@ fun FullPlayerBottomSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
         }
     }
@@ -451,7 +660,12 @@ fun FullPlayerBottomSheet(
 
 private fun formatMs(ms: Long): String {
     val totalSecs = (ms / 1000).coerceAtLeast(0L)
-    val mins = totalSecs / 60
-    val secs = totalSecs % 60
-    return String.format("%d:%02d", mins, secs)
+    val h = totalSecs / 3600
+    val m = (totalSecs % 3600) / 60
+    val s = totalSecs % 60
+    return if (h > 0) {
+        String.format("%d:%02d:%02d", h, m, s)
+    } else {
+        String.format("%d:%02d", m, s)
+    }
 }

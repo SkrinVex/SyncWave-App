@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -34,11 +35,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,6 +69,7 @@ fun PlaylistsScreen(
     viewModel: PlaylistsViewModel
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
 
     Column(
         modifier = Modifier
@@ -165,7 +171,7 @@ fun PlaylistsScreen(
                         text = "Добавьте плейлист или 'Понравившиеся (LM)' для автосинхронизации",
                         fontSize = 12.sp,
                         color = Zinc500,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        textAlign = TextAlign.Center
                     )
                 }
             }
@@ -180,7 +186,7 @@ fun PlaylistsScreen(
                         playlist = playlist,
                         isSyncing = uiState.syncingPlaylistId == playlist.id,
                         onSync = { viewModel.syncPlaylist(playlist.id) },
-                        onDelete = { viewModel.deletePlaylist(playlist.id) }
+                        onDelete = { playlistToDelete = playlist }
                     )
                 }
             }
@@ -311,6 +317,45 @@ fun PlaylistsScreen(
             }
         )
     }
+
+    // Delete Playlist Confirmation Dialog
+    if (playlistToDelete != null) {
+        val pl = playlistToDelete!!
+        AlertDialog(
+            onDismissRequest = { playlistToDelete = null },
+            containerColor = StudioSurface,
+            shape = RoundedCornerShape(18.dp),
+            title = {
+                Text(
+                    text = "Удаление плейлиста",
+                    color = Zinc100,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "Вы действительно хотите удалить плейлист «${pl.title}»? Сами треки останутся в вашей медиатеке.",
+                    color = Zinc400,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val id = pl.id
+                    playlistToDelete = null
+                    viewModel.deletePlaylist(id)
+                }) {
+                    Text("Удалить", color = StudioRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { playlistToDelete = null }) {
+                    Text("Отмена", color = Zinc400)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -367,11 +412,18 @@ fun PlaylistItemCard(
                             Box(
                                 modifier = Modifier
                                     .size(6.dp)
-                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .clip(CircleShape)
                                     .background(StudioEmerald)
                             )
+                            val intervalText = if (playlist.syncIntervalMinutes >= 60) {
+                                val h = playlist.syncIntervalMinutes / 60
+                                val m = playlist.syncIntervalMinutes % 60
+                                if (m == 0) "$h ч" else "$h ч $m мин"
+                            } else {
+                                "${playlist.syncIntervalMinutes} мин"
+                            }
                             Text(
-                                text = "Авто (${playlist.syncIntervalMinutes} мин)",
+                                text = "Авто ($intervalText)",
                                 fontSize = 10.sp,
                                 color = StudioEmerald
                             )

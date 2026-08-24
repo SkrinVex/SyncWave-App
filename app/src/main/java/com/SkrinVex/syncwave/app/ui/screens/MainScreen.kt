@@ -79,7 +79,8 @@ fun MainScreen(
                         coverUrl = coverUrl,
                         onExpand = { isFullPlayerOpen = true },
                         onPlayPause = { playerManager.togglePlayPause() },
-                        onNext = { playerManager.playNext() }
+                        onNext = { playerManager.playNext() },
+                        onDismiss = { playerManager.stopPlayback() }
                     )
                 }
 
@@ -150,6 +151,7 @@ fun MainScreen(
                     val viewModel: LibraryViewModel = viewModel(
                         factory = LibraryViewModel.Factory(
                             container.getTracksUseCase,
+                            container.getAllReadyTracksUseCase,
                             container.getLibraryStatsUseCase,
                             container.getPlaylistsUseCase,
                             container.deleteTrackUseCase,
@@ -176,7 +178,9 @@ fun MainScreen(
                         factory = SyncViewModel.Factory(
                             container.getSyncProgressUseCase,
                             container.getSyncLogsUseCase,
-                            container.triggerSyncUseCase
+                            container.triggerSyncUseCase,
+                            container.cancelSyncUseCase,
+                            container.clearSyncLogsUseCase
                         )
                     )
                     SyncScreen(viewModel = viewModel)
@@ -188,11 +192,10 @@ fun MainScreen(
                             container.getCurrentUserUseCase,
                             container.getSettingsUseCase,
                             container.getLibraryStatsUseCase,
-                            container.getSavedSessionUseCase,
                             container.getServerUrlUseCase,
                             container.saveServerUrlUseCase,
-                            container.checkAuthStatusUseCase,
-                            container.logoutUseCase
+                            container.logoutUseCase,
+                            container.sessionDataStore
                         )
                     )
                     SettingsScreen(
@@ -210,6 +213,7 @@ fun MainScreen(
         FullPlayerBottomSheet(
             playerState = playerState,
             coverUrl = coverUrl,
+            getTrackCoverUrl = { trackId -> container.trackRepository.getCoverUrl(trackId, token ?: "") },
             onDismiss = { isFullPlayerOpen = false },
             onPlayPause = { playerManager.togglePlayPause() },
             onNext = { playerManager.playNext() },
@@ -217,7 +221,10 @@ fun MainScreen(
             onSeek = { targetMs -> playerManager.seekTo(targetMs) },
             onToggleShuffle = { playerManager.toggleShuffle() },
             onCycleRepeat = { playerManager.cycleRepeatMode() },
-            onSelectQueueTrack = { index -> playerManager.skipToQueueItem(index) }
+            onSelectQueueTrack = { index -> playerManager.skipToQueueItem(index) },
+            onRemoveFromQueue = { index -> playerManager.removeFromQueue(index) },
+            onReshuffleQueue = { playerManager.reshuffleQueue() },
+            onClearQueue = { playerManager.clearQueue() }
         )
     }
 }

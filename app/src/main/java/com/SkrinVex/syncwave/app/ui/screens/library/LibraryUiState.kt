@@ -12,6 +12,9 @@ enum class ViewMode {
 data class LibraryUiState(
     val tracks: List<Track> = emptyList(),
     val totalTracks: Int = 0,
+    val currentPage: Int = 1,
+    val hasMore: Boolean = false,
+    val isLoadingMore: Boolean = false,
     val stats: TrackStats = TrackStats(),
     val playlists: List<Playlist> = emptyList(),
     val selectedPlaylistId: String = "",
@@ -21,6 +24,6 @@ data class LibraryUiState(
     val viewMode: ViewMode = ViewMode.LIST,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
-    val errorMessage: String? = null,
-    val trackToDelete: Track? = null
+    val trackToDelete: Track? = null,
+    val errorMessage: String? = null
 )
