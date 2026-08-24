@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Analytics
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownloadDone
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
@@ -454,6 +456,153 @@ fun SettingsScreen(
             }
         }
 
+        // Section: Downloaded Tracks & Offline Storage Card
+        StudioCard(
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = StudioSurface,
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FileDownloadDone,
+                            contentDescription = null,
+                            tint = StudioEmerald,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "Скачанные треки и оффлайн",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Zinc100
+                        )
+                    }
+
+                    StudioBadge(
+                        text = "${uiState.downloadedTracks.size} ТРЕКОВ",
+                        backgroundColor = StudioEmerald.copy(alpha = 0.15f),
+                        textColor = StudioEmerald
+                    )
+                }
+
+                // Switch 1: Auto-download all tracks
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(
+                            text = "Автоматически скачивать все треки",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Zinc100
+                        )
+                        Text(
+                            text = "Автоматически сохранять новые треки на устройство для прослушивания без интернета",
+                            fontSize = 11.sp,
+                            color = Zinc400,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
+                    Switch(
+                        checked = uiState.isAutoDownloadEnabled,
+                        onCheckedChange = { viewModel.toggleAutoDownload(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Zinc100,
+                            checkedTrackColor = StudioAccent,
+                            uncheckedThumbColor = Zinc500,
+                            uncheckedTrackColor = StudioElevated
+                        )
+                    )
+                }
+
+                // Switch 2: Auto-delete orphaned downloads
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text(
+                            text = "Автоматически удалять треки, если их нет на сервере",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Zinc100
+                        )
+                        Text(
+                            text = "Удалять локальный файл с устройства, если трек был удален из библиотеки на сервере",
+                            fontSize = 11.sp,
+                            color = Zinc400,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
+                    Switch(
+                        checked = uiState.isAutoDeleteOrphanedEnabled,
+                        onCheckedChange = { viewModel.toggleAutoDeleteOrphaned(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Zinc100,
+                            checkedTrackColor = StudioAccent,
+                            uncheckedThumbColor = Zinc500,
+                            uncheckedTrackColor = StudioElevated
+                        )
+                    )
+                }
+
+                // Manage Downloaded Tracks Button
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(StudioElevated)
+                        .border(1.dp, StudioBorder, RoundedCornerShape(12.dp))
+                        .clickable { viewModel.openDownloadsSheet() }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Управление скачанными треками",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Zinc100
+                        )
+                        Text(
+                            text = "Занято памяти: ${uiState.downloadedTotalStorageFormatted} (${uiState.downloadedTracks.size} треков)",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = StudioEmerald,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text("Открыть", color = StudioAccent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                            contentDescription = null,
+                            tint = StudioAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+        }
+
         // Section 3: Server Connection Card
         StudioCard(
             modifier = Modifier.fillMaxWidth(),
@@ -816,6 +965,18 @@ fun SettingsScreen(
                     Text("Отмена", color = Zinc400)
                 }
             }
+        )
+    }
+
+    // Downloaded Tracks Management Modal Bottom Sheet
+    if (uiState.isDownloadsSheetOpen) {
+        DownloadedTracksBottomSheet(
+            downloadedTracks = uiState.downloadedTracks,
+            totalStorageFormatted = uiState.downloadedTotalStorageFormatted,
+            onDismiss = { viewModel.closeDownloadsSheet() },
+            onPlayTrack = { track -> viewModel.playDownloadedTrack(track) },
+            onDeleteTrack = { trackId -> viewModel.deleteDownloadedTrack(trackId) },
+            onDeleteAll = { viewModel.deleteAllDownloadedTracks() }
         )
     }
 }

@@ -8,10 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.QueueMusic
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -33,6 +30,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.SkrinVex.syncwave.app.SyncWaveApplication
+import com.SkrinVex.syncwave.app.domain.model.DownloadStatus
 import com.SkrinVex.syncwave.app.ui.components.FullPlayerBottomSheet
 import com.SkrinVex.syncwave.app.ui.components.MiniPlayerBar
 import com.SkrinVex.syncwave.app.ui.navigation.Screen
@@ -48,8 +46,6 @@ import com.SkrinVex.syncwave.app.ui.theme.StudioAccent
 import com.SkrinVex.syncwave.app.ui.theme.StudioBg
 import com.SkrinVex.syncwave.app.ui.theme.StudioBorder
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
-import com.SkrinVex.syncwave.app.ui.theme.Zinc100
-import com.SkrinVex.syncwave.app.ui.theme.Zinc400
 import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 
 @Composable
@@ -59,6 +55,7 @@ fun MainScreen(
     val navController = rememberNavController()
     val container = SyncWaveApplication.instance.container
     val playerManager = container.audioPlayerManager
+    val downloadManager = container.downloadManager
     val playerState by playerManager.playerState.collectAsStateWithLifecycle()
 
     var isFullPlayerOpen by remember { mutableStateOf(false) }
@@ -67,6 +64,8 @@ fun MainScreen(
     val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Library.route
 
     val token by container.sessionDataStore.tokenFlow.collectAsStateWithLifecycle(initialValue = "")
+    val downloadedTrackIds by downloadManager.downloadedTrackIds.collectAsStateWithLifecycle(initialValue = emptySet())
+    val downloadTasks by downloadManager.tasks.collectAsStateWithLifecycle(initialValue = emptyList())
 
     Scaffold(
         bottomBar = {
@@ -162,6 +161,8 @@ fun MainScreen(
                             container.getLibraryStatsUseCase,
                             container.getPlaylistsUseCase,
                             container.deleteTrackUseCase,
+                            container.batchDeleteTracksUseCase,
+                            downloadManager,
                             playerManager
                         )
                     )
@@ -187,7 +188,8 @@ fun MainScreen(
                             container.getSyncLogsUseCase,
                             container.triggerSyncUseCase,
                             container.cancelSyncUseCase,
-                            container.clearSyncLogsUseCase
+                            container.clearSyncLogsUseCase,
+                            downloadManager
                         )
                     )
                     SyncScreen(viewModel = viewModel)
@@ -203,7 +205,9 @@ fun MainScreen(
                             container.saveServerUrlUseCase,
                             container.logoutUseCase,
                             container.settingsRepository,
-                            container.sessionDataStore
+                            container.sessionDataStore,
+                            downloadManager,
+                            playerManager
                         )
                     )
                     SettingsScreen(
@@ -217,7 +221,13 @@ fun MainScreen(
 
     // Expandable Full Player Bottom Sheet
     if (isFullPlayerOpen && playerState.currentTrack != null) {
-        val coverUrl = container.trackRepository.getCoverUrl(playerState.currentTrack!!.id, token ?: "")
+        val currentTrack = playerState.currentTrack!!
+        val coverUrl = container.trackRepository.getCoverUrl(currentTrack.id, token ?: "")
+        val isDownloaded = downloadedTrackIds.contains(currentTrack.id)
+        val currentTask = downloadTasks.firstOrNull { it.id == currentTrack.id }
+        val isDownloading = currentTask?.status == DownloadStatus.DOWNLOADING || currentTask?.status == DownloadStatus.PENDING
+        val downloadProgress = currentTask?.progress ?: 0
+
         FullPlayerBottomSheet(
             playerState = playerState,
             coverUrl = coverUrl,
@@ -235,7 +245,12 @@ fun MainScreen(
             onSelectQueueTrack = { index -> playerManager.skipToQueueItem(index) },
             onRemoveFromQueue = { index -> playerManager.removeFromQueue(index) },
             onReshuffleQueue = { playerManager.reshuffleQueue() },
-            onClearQueue = { playerManager.clearQueue() }
+            onClearQueue = { playerManager.clearQueue() },
+            isDownloaded = isDownloaded,
+            isDownloading = isDownloading,
+            downloadProgress = downloadProgress,
+            onDownloadTrack = { downloadManager.enqueueDownload(currentTrack) },
+            onDeleteDownloadedTrack = { downloadManager.deleteDownloadedTrack(currentTrack.id) }
         )
     }
 }

@@ -1,17 +1,25 @@
 package com.SkrinVex.syncwave.app.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FileDownloadDone
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -31,10 +39,13 @@ import com.SkrinVex.syncwave.app.domain.model.Track
 import com.SkrinVex.syncwave.app.ui.theme.StudioAccent
 import com.SkrinVex.syncwave.app.ui.theme.StudioBorder
 import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
+import com.SkrinVex.syncwave.app.ui.theme.StudioEmerald
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
 import com.SkrinVex.syncwave.app.ui.theme.Zinc400
+import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackCardItem(
     track: Track,
@@ -42,6 +53,10 @@ fun TrackCardItem(
     isPlaying: Boolean,
     isCurrentTrack: Boolean,
     onClick: () -> Unit,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    isDownloaded: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -53,15 +68,31 @@ fun TrackCardItem(
             .build()
     }
 
+    val backgroundColor = when {
+        isSelected -> StudioAccent.copy(alpha = 0.14f)
+        else -> StudioSurface
+    }
+
+    val borderColor = when {
+        isSelected -> StudioAccent.copy(alpha = 0.6f)
+        isCurrentTrack -> StudioAccent.copy(alpha = 0.4f)
+        else -> StudioBorder
+    }
+
     StudioCard(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        backgroundColor = StudioSurface,
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        backgroundColor = backgroundColor,
         shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Artwork Image with Equalizer overlay
+            // Artwork Image with Equalizer & Selection overlay
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -93,6 +124,47 @@ fun TrackCardItem(
                         )
                     }
                 }
+
+                // Checkbox top-right overlay when in selection mode
+                if (isSelectionMode) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.6f))
+                    ) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = { onClick() },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = StudioAccent,
+                                uncheckedColor = Zinc500,
+                                checkmarkColor = Zinc100
+                            ),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                // Downloaded badge bottom-right
+                if (isDownloaded && !isSelectionMode) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(4.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.7f))
+                            .padding(2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FileDownloadDone,
+                            contentDescription = "Скачано",
+                            tint = StudioEmerald,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -108,14 +180,19 @@ fun TrackCardItem(
             )
 
             // Artist
-            Text(
-                text = track.artist.ifBlank { "Unknown Artist" },
-                fontSize = 10.sp,
-                color = Zinc400,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(top = 2.dp)
-            )
+            ) {
+                Text(
+                    text = track.artist.ifBlank { "Unknown Artist" },
+                    fontSize = 10.sp,
+                    color = Zinc400,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }

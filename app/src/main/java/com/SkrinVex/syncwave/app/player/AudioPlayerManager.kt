@@ -18,6 +18,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
@@ -49,7 +50,8 @@ import java.io.File
 class AudioPlayerManager(
     private val context: Context,
     private val sessionDataStore: SessionDataStore,
-    private val trackRepository: TrackRepository
+    private val trackRepository: TrackRepository,
+    private val downloadStorage: com.SkrinVex.syncwave.app.data.local.DownloadStorage
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
     var exoPlayer: ExoPlayer? = null
@@ -105,13 +107,15 @@ class AudioPlayerManager(
             .setConnectTimeoutMs(15000)
             .setReadTimeoutMs(30000)
 
+        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+
         val dataSourceFactory = if (simpleCache != null) {
             CacheDataSource.Factory()
                 .setCache(simpleCache!!)
-                .setUpstreamDataSourceFactory(httpDataSourceFactory)
+                .setUpstreamDataSourceFactory(defaultDataSourceFactory)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         } else {
-            httpDataSourceFactory
+            defaultDataSourceFactory
         }
 
         val mediaSourceFactory = DefaultMediaSourceFactory(context)
@@ -276,19 +280,31 @@ class AudioPlayerManager(
 
     fun playTrack(track: Track, customQueue: List<Track>? = null) {
         val token = sessionDataStore.getTokenCached() ?: ""
-        val streamUrl = trackRepository.getStreamUrl(track.id, token)
-        val coverUrl = trackRepository.getCoverUrl(track.id, token)
+        val localAudioFile = downloadStorage.getLocalAudioFile(track.id)
+        val localCoverFile = downloadStorage.getLocalCoverFile(track.id)
+
+        val streamUri = if (localAudioFile != null && localAudioFile.exists() && localAudioFile.length() > 0) {
+            Uri.fromFile(localAudioFile)
+        } else {
+            Uri.parse(trackRepository.getStreamUrl(track.id, token))
+        }
+
+        val coverUri = if (localCoverFile != null && localCoverFile.exists() && localCoverFile.length() > 0) {
+            Uri.fromFile(localCoverFile)
+        } else {
+            Uri.parse(trackRepository.getCoverUrl(track.id, token))
+        }
 
         val mediaMetadata = MediaMetadata.Builder()
             .setTitle(track.title)
             .setArtist(track.artist.ifBlank { "Unknown Artist" })
             .setAlbumTitle(track.album.ifBlank { "SyncWave" })
-            .setArtworkUri(Uri.parse(coverUrl))
+            .setArtworkUri(coverUri)
             .build()
 
         val mediaItem = MediaItem.Builder()
             .setMediaId(track.id)
-            .setUri(Uri.parse(streamUrl))
+            .setUri(streamUri)
             .setMediaMetadata(mediaMetadata)
             .build()
 

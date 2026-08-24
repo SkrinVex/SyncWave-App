@@ -29,6 +29,8 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
         val KEY_USER_JSON = stringPreferencesKey("user_json")
         val KEY_SERVER_URL = stringPreferencesKey("server_url")
         val KEY_AUDIO_FOCUS = booleanPreferencesKey("audio_focus_enabled")
+        val KEY_AUTO_DOWNLOAD_TRACKS = booleanPreferencesKey("auto_download_tracks")
+        val KEY_AUTO_DELETE_ORPHANED_DOWNLOADS = booleanPreferencesKey("auto_delete_orphaned_downloads")
         const val DEFAULT_SERVER_URL = "https://syncwave.skrinvex.com"
     }
 
@@ -44,6 +46,12 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
     @Volatile
     private var _cachedAudioFocus: Boolean = true
 
+    @Volatile
+    private var _cachedAutoDownloadTracks: Boolean = true
+
+    @Volatile
+    private var _cachedAutoDeleteOrphanedDownloads: Boolean = true
+
     init {
         // Preload memory cache from DataStore asynchronously
         CoroutineScope(Dispatchers.IO).launch {
@@ -52,6 +60,8 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
                 prefs[KEY_SERVER_URL]?.takeIf { it.isNotBlank() }?.let { _cachedServerUrl = it }
                 prefs[KEY_TOKEN]?.takeIf { it.isNotBlank() }?.let { _cachedToken = it }
                 prefs[KEY_AUDIO_FOCUS]?.let { _cachedAudioFocus = it }
+                prefs[KEY_AUTO_DOWNLOAD_TRACKS]?.let { _cachedAutoDownloadTracks = it }
+                prefs[KEY_AUTO_DELETE_ORPHANED_DOWNLOADS]?.let { _cachedAutoDeleteOrphanedDownloads = it }
                 prefs[KEY_USER_JSON]?.takeIf { it.isNotBlank() }?.let {
                     _cachedUser = gson.fromJson(it, User::class.java)
                 }
@@ -89,6 +99,26 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
             enabled
         }
 
+    val autoDownloadTracksFlow: Flow<Boolean> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences()) else throw exception
+        }
+        .map { preferences ->
+            val enabled = preferences[KEY_AUTO_DOWNLOAD_TRACKS] ?: true
+            _cachedAutoDownloadTracks = enabled
+            enabled
+        }
+
+    val autoDeleteOrphanedDownloadsFlow: Flow<Boolean> = context.dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(emptyPreferences()) else throw exception
+        }
+        .map { preferences ->
+            val enabled = preferences[KEY_AUTO_DELETE_ORPHANED_DOWNLOADS] ?: true
+            _cachedAutoDeleteOrphanedDownloads = enabled
+            enabled
+        }
+
     val sessionFlow: Flow<AuthSession?> = context.dataStore.data
         .catch { exception ->
             if (exception is IOException) emit(emptyPreferences()) else throw exception
@@ -114,6 +144,10 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
     fun getTokenCached(): String? = _cachedToken
 
     fun isAudioFocusEnabledCached(): Boolean = _cachedAudioFocus
+
+    fun isAutoDownloadTracksCached(): Boolean = _cachedAutoDownloadTracks
+
+    fun isAutoDeleteOrphanedDownloadsCached(): Boolean = _cachedAutoDeleteOrphanedDownloads
 
     fun getSessionCached(): AuthSession? {
         val token = _cachedToken ?: return null
@@ -141,6 +175,20 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
         _cachedAudioFocus = enabled
         context.dataStore.edit { preferences ->
             preferences[KEY_AUDIO_FOCUS] = enabled
+        }
+    }
+
+    suspend fun setAutoDownloadTracks(enabled: Boolean) {
+        _cachedAutoDownloadTracks = enabled
+        context.dataStore.edit { preferences ->
+            preferences[KEY_AUTO_DOWNLOAD_TRACKS] = enabled
+        }
+    }
+
+    suspend fun setAutoDeleteOrphanedDownloads(enabled: Boolean) {
+        _cachedAutoDeleteOrphanedDownloads = enabled
+        context.dataStore.edit { preferences ->
+            preferences[KEY_AUTO_DELETE_ORPHANED_DOWNLOADS] = enabled
         }
     }
 

@@ -3,17 +3,20 @@ package com.SkrinVex.syncwave.app.ui.screens.sync
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.SkrinVex.syncwave.app.domain.model.DownloadStatus
 import com.SkrinVex.syncwave.app.domain.model.Resource
 import com.SkrinVex.syncwave.app.domain.usecase.sync.CancelSyncUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.sync.ClearSyncLogsUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.sync.GetSyncLogsUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.sync.GetSyncProgressUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.sync.TriggerSyncUseCase
+import com.SkrinVex.syncwave.app.download.DownloadManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -23,7 +26,8 @@ class SyncViewModel(
     private val getSyncLogsUseCase: GetSyncLogsUseCase,
     private val triggerSyncUseCase: TriggerSyncUseCase,
     private val cancelSyncUseCase: CancelSyncUseCase,
-    private val clearSyncLogsUseCase: ClearSyncLogsUseCase
+    private val clearSyncLogsUseCase: ClearSyncLogsUseCase,
+    val downloadManager: DownloadManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SyncUiState())
@@ -33,6 +37,44 @@ class SyncViewModel(
 
     init {
         startPolling()
+        observeLocalDownloads()
+    }
+
+    private fun observeLocalDownloads() {
+        viewModelScope.launch {
+            downloadManager.isDownloading.collectLatest { downloading ->
+                _uiState.update { it.copy(isLocalDownloading = downloading) }
+            }
+        }
+        viewModelScope.launch {
+            downloadManager.tasks.collectLatest { taskList ->
+                val active = taskList.firstOrNull { it.status == DownloadStatus.DOWNLOADING }
+                _uiState.update {
+                    it.copy(
+                        localDownloadTasks = taskList,
+                        activeLocalTask = active
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            downloadManager.overallProgress.collectLatest { prog ->
+                _uiState.update { it.copy(localOverallProgress = prog) }
+            }
+        }
+        viewModelScope.launch {
+            downloadManager.downloadedTracks.collectLatest { list ->
+                val totalBytes = list.sumOf { it.sizeBytes }
+                val mb = totalBytes.toDouble() / (1024 * 1024)
+                val formatted = if (mb >= 1024) "%.2f ГБ".format(mb / 1024) else "%.1f МБ".format(mb)
+                _uiState.update {
+                    it.copy(
+                        downloadedCount = list.size,
+                        downloadedTotalStorageFormatted = formatted
+                    )
+                }
+            }
+        }
     }
 
     private fun startPolling() {
@@ -104,6 +146,10 @@ class SyncViewModel(
         }
     }
 
+    fun cancelLocalDownloads() {
+        downloadManager.cancelAll()
+    }
+
     fun openConfirmClearLogs() {
         _uiState.update { it.copy(isConfirmClearLogsOpen = true) }
     }
@@ -139,7 +185,8 @@ class SyncViewModel(
         private val getSyncLogsUseCase: GetSyncLogsUseCase,
         private val triggerSyncUseCase: TriggerSyncUseCase,
         private val cancelSyncUseCase: CancelSyncUseCase,
-        private val clearSyncLogsUseCase: ClearSyncLogsUseCase
+        private val clearSyncLogsUseCase: ClearSyncLogsUseCase,
+        private val downloadManager: DownloadManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -148,7 +195,8 @@ class SyncViewModel(
                 getSyncLogsUseCase,
                 triggerSyncUseCase,
                 cancelSyncUseCase,
-                clearSyncLogsUseCase
+                clearSyncLogsUseCase,
+                downloadManager
             ) as T
         }
     }

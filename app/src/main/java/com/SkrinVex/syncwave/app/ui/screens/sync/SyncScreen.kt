@@ -31,6 +31,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FileDownloadDone
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -251,6 +254,152 @@ fun SyncScreen(
                                 )
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Local Device Downloads & Offline Cache Card
+        StudioCard(
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = StudioSurface,
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (uiState.isLocalDownloading) StudioAccent else StudioEmerald)
+                        )
+                        Text(
+                            text = if (uiState.isLocalDownloading) "СКАЧИВАНИЕ В ПАМЯТЬ" else "ОФФЛАЙН ХРАНИЛИЩЕ",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = if (uiState.isLocalDownloading) StudioAccent else StudioEmerald
+                        )
+                    }
+
+                    if (uiState.isLocalDownloading) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "${uiState.localOverallProgress}%",
+                                fontSize = 13.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = StudioAccent
+                            )
+
+                            // Cancel Downloads Button
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(StudioElevated)
+                                    .clickable { viewModel.cancelLocalDownloads() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Отмена",
+                                    tint = Zinc400,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text("Отмена", fontSize = 10.sp, color = Zinc400)
+                            }
+                        }
+                    } else {
+                        StudioBadge(
+                            text = "${uiState.downloadedCount} ТРЕКОВ • ${uiState.downloadedTotalStorageFormatted}",
+                            backgroundColor = StudioEmerald.copy(alpha = 0.15f),
+                            textColor = StudioEmerald
+                        )
+                    }
+                }
+
+                if (uiState.isLocalDownloading && uiState.activeLocalTask != null) {
+                    val active = uiState.activeLocalTask!!
+                    val completed = uiState.localDownloadTasks.count { it.status == com.SkrinVex.syncwave.app.domain.model.DownloadStatus.COMPLETED }
+                    val total = uiState.localDownloadTasks.size
+
+                    Text(
+                        text = "${active.title} — ${active.artist.ifBlank { "SyncWave" }}",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Zinc100,
+                        maxLines = 1
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        LinearProgressIndicator(
+                            progress = { (uiState.localOverallProgress / 100f).coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = StudioAccent,
+                            trackColor = StudioElevated
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Трек $completed из $total в очереди",
+                                fontSize = 10.sp,
+                                color = Zinc400
+                            )
+                            Text(
+                                text = "${uiState.localOverallProgress}%",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = StudioAccent
+                            )
+                        }
+                    }
+                } else if (!uiState.isLocalDownloading) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.FileDownloadDone,
+                                contentDescription = null,
+                                tint = StudioEmerald,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Все треки синхронизированы для оффлайн режима",
+                                fontSize = 11.sp,
+                                color = Zinc300
+                            )
+                        }
+                        Text(
+                            text = uiState.downloadedTotalStorageFormatted,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = StudioEmerald
+                        )
                     }
                 }
             }

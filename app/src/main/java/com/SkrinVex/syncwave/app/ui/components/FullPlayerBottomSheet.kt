@@ -31,6 +31,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FileDownloadDone
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
@@ -108,7 +110,12 @@ fun FullPlayerBottomSheet(
     onSelectQueueTrack: ((Int) -> Unit)? = null,
     onRemoveFromQueue: ((Int) -> Unit)? = null,
     onReshuffleQueue: (() -> Unit)? = null,
-    onClearQueue: (() -> Unit)? = null
+    onClearQueue: (() -> Unit)? = null,
+    isDownloaded: Boolean = false,
+    isDownloading: Boolean = false,
+    downloadProgress: Int = 0,
+    onDownloadTrack: (() -> Unit)? = null,
+    onDeleteDownloadedTrack: (() -> Unit)? = null
 ) {
     val track = playerState.currentTrack ?: return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -622,7 +629,7 @@ fun FullPlayerBottomSheet(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Audio Info & Speed Auxiliary Pill Bar
+                // Audio Info, Speed & Download Auxiliary Pill Bar
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -650,12 +657,91 @@ fun FullPlayerBottomSheet(
                         }
                     }
 
-                    // Speed Pill Selector Button
+                    // Speed Pill & Download Action Pill
                     Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(StudioElevated)
-                            .border(1.dp, StudioBorder, RoundedCornerShape(8.dp))
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Download Pill Button
+                        if (isDownloaded) {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(StudioEmerald.copy(alpha = 0.15f))
+                                    .border(1.dp, StudioEmerald.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                    .clickable { onDeleteDownloadedTrack?.invoke() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FileDownloadDone,
+                                    contentDescription = "Скачано",
+                                    tint = StudioEmerald,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "Скачано",
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = StudioEmerald
+                                )
+                            }
+                        } else if (isDownloading) {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(StudioAccent.copy(alpha = 0.15f))
+                                    .border(1.dp, StudioAccent.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(11.dp),
+                                    color = StudioAccent,
+                                    strokeWidth = 1.5.dp
+                                )
+                                Text(
+                                    text = "$downloadProgress%",
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = StudioAccent
+                                )
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(StudioElevated)
+                                    .border(1.dp, StudioBorder, RoundedCornerShape(8.dp))
+                                    .clickable { onDownloadTrack?.invoke() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Download,
+                                    contentDescription = "Скачать",
+                                    tint = Zinc300,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "Скачать",
+                                    fontSize = 11.sp,
+                                    color = Zinc300
+                                )
+                            }
+                        }
+
+                        // Speed Pill Selector Button
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(StudioElevated)
+                                .border(1.dp, StudioBorder, RoundedCornerShape(8.dp))
                             .clickable { showSpeedDialog = true }
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -676,6 +762,7 @@ fun FullPlayerBottomSheet(
                         )
                     }
                 }
+            }
 
                 Spacer(modifier = Modifier.height(12.dp))
 

@@ -51,6 +51,12 @@
             android:name=".upload.UploadForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Background Track Download Foreground Service -->
+        <service
+            android:name=".download.DownloadForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

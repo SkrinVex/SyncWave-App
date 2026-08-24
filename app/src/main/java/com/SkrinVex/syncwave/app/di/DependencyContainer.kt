@@ -131,9 +131,24 @@ class DependencyContainer(val context: Context) {
         com.SkrinVex.syncwave.app.cookies.GoogleAuthManager(settingsRepository)
     }
 
+    // Download Storage & Manager
+    val downloadStorage: com.SkrinVex.syncwave.app.data.local.DownloadStorage by lazy {
+        com.SkrinVex.syncwave.app.data.local.DownloadStorage(context, gson)
+    }
+
+    val downloadManager: com.SkrinVex.syncwave.app.download.DownloadManager by lazy {
+        com.SkrinVex.syncwave.app.download.DownloadManager(
+            context = context,
+            downloadStorage = downloadStorage,
+            sessionDataStore = sessionDataStore,
+            trackRepository = trackRepository,
+            okHttpClient = okHttpClient
+        )
+    }
+
     // Audio Player Manager
     val audioPlayerManager: AudioPlayerManager by lazy {
-        AudioPlayerManager(context, sessionDataStore, trackRepository)
+        AudioPlayerManager(context, sessionDataStore, trackRepository, downloadStorage)
     }
 
     // Use Cases
@@ -150,6 +165,7 @@ class DependencyContainer(val context: Context) {
     val getAllReadyTracksUseCase by lazy { com.SkrinVex.syncwave.app.domain.usecase.track.GetAllReadyTracksUseCase(trackRepository) }
     val getLibraryStatsUseCase by lazy { GetLibraryStatsUseCase(trackRepository) }
     val deleteTrackUseCase by lazy { DeleteTrackUseCase(trackRepository) }
+    val batchDeleteTracksUseCase by lazy { com.SkrinVex.syncwave.app.domain.usecase.track.BatchDeleteTracksUseCase(trackRepository) }
 
     val getPlaylistsUseCase by lazy { GetPlaylistsUseCase(playlistRepository) }
     val createPlaylistUseCase by lazy { CreatePlaylistUseCase(playlistRepository) }

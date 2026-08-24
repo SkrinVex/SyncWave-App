@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.SkrinVex.syncwave.app.data.local.SessionDataStore
+import com.SkrinVex.syncwave.app.domain.model.DownloadedTrack
 import com.SkrinVex.syncwave.app.domain.model.Resource
 import com.SkrinVex.syncwave.app.domain.repository.SettingsRepository
 import com.SkrinVex.syncwave.app.domain.usecase.auth.GetCurrentUserUseCase
@@ -14,6 +15,8 @@ import com.SkrinVex.syncwave.app.domain.usecase.auth.LogoutUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.SaveServerUrlUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.settings.GetSettingsUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.track.GetLibraryStatsUseCase
+import com.SkrinVex.syncwave.app.download.DownloadManager
+import com.SkrinVex.syncwave.app.player.AudioPlayerManager
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -38,7 +41,9 @@ class SettingsViewModel(
     private val saveServerUrlUseCase: SaveServerUrlUseCase,
     private val logoutUseCase: LogoutUseCase,
     private val settingsRepository: SettingsRepository,
-    private val sessionDataStore: SessionDataStore
+    private val sessionDataStore: SessionDataStore,
+    private val downloadManager: DownloadManager,
+    private val playerManager: AudioPlayerManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -49,13 +54,37 @@ class SettingsViewModel(
 
     init {
         loadData()
-        observeAudioFocus()
+        observePreferencesAndDownloads()
     }
 
-    private fun observeAudioFocus() {
+    private fun observePreferencesAndDownloads() {
         viewModelScope.launch {
             sessionDataStore.audioFocusEnabledFlow.collectLatest { enabled ->
                 _uiState.update { it.copy(isAudioFocusEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            sessionDataStore.autoDownloadTracksFlow.collectLatest { enabled ->
+                _uiState.update { it.copy(isAutoDownloadEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            sessionDataStore.autoDeleteOrphanedDownloadsFlow.collectLatest { enabled ->
+                _uiState.update { it.copy(isAutoDeleteOrphanedEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            downloadManager.downloadedTracks.collectLatest { list ->
+                val totalBytes = list.sumOf { it.sizeBytes }
+                val mb = totalBytes.toDouble() / (1024 * 1024)
+                val formatted = if (mb >= 1024) "%.2f ГБ".format(mb / 1024) else "%.1f МБ".format(mb)
+
+                _uiState.update {
+                    it.copy(
+                        downloadedTracks = list,
+                        downloadedTotalStorageFormatted = formatted
+                    )
+                }
             }
         }
     }
@@ -107,6 +136,40 @@ class SettingsViewModel(
         }
     }
 
+    fun toggleAutoDownload(enabled: Boolean) {
+        viewModelScope.launch {
+            sessionDataStore.setAutoDownloadTracks(enabled)
+            _uiState.update { it.copy(isAutoDownloadEnabled = enabled) }
+        }
+    }
+
+    fun toggleAutoDeleteOrphaned(enabled: Boolean) {
+        viewModelScope.launch {
+            sessionDataStore.setAutoDeleteOrphanedDownloads(enabled)
+            _uiState.update { it.copy(isAutoDeleteOrphanedEnabled = enabled) }
+        }
+    }
+
+    fun openDownloadsSheet() {
+        _uiState.update { it.copy(isDownloadsSheetOpen = true) }
+    }
+
+    fun closeDownloadsSheet() {
+        _uiState.update { it.copy(isDownloadsSheetOpen = false) }
+    }
+
+    fun playDownloadedTrack(track: DownloadedTrack) {
+        playerManager.playTrack(track.toTrack(), customQueue = _uiState.value.downloadedTracks.map { it.toTrack() })
+    }
+
+    fun deleteDownloadedTrack(trackId: String) {
+        downloadManager.deleteDownloadedTrack(trackId)
+    }
+
+    fun deleteAllDownloadedTracks() {
+        downloadManager.deleteAllDownloadedTracks()
+    }
+
     fun openGoogleAuthModal() {
         _uiState.update { it.copy(isGoogleAuthModalOpen = true) }
     }
@@ -139,7 +202,7 @@ class SettingsViewModel(
                                 )
                             }
                         }
-                        is Resource.Loading -> {}
+                        Resource.Loading -> {}
                     }
                 } else {
                     _uiState.update {
@@ -175,7 +238,7 @@ class SettingsViewModel(
                         )
                     }
                 }
-                is Resource.Loading -> {}
+                Resource.Loading -> {}
             }
         }
     }
@@ -270,7 +333,9 @@ class SettingsViewModel(
         private val saveServerUrlUseCase: SaveServerUrlUseCase,
         private val logoutUseCase: LogoutUseCase,
         private val settingsRepository: SettingsRepository,
-        private val sessionDataStore: SessionDataStore
+        private val sessionDataStore: SessionDataStore,
+        private val downloadManager: DownloadManager,
+        private val playerManager: AudioPlayerManager
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -282,9 +347,10 @@ class SettingsViewModel(
                 saveServerUrlUseCase,
                 logoutUseCase,
                 settingsRepository,
-                sessionDataStore
+                sessionDataStore,
+                downloadManager,
+                playerManager
             ) as T
         }
     }
 }
-

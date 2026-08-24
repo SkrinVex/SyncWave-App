@@ -1,8 +1,9 @@
 package com.SkrinVex.syncwave.app.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,8 +18,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FileDownloadDone
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -46,6 +52,7 @@ import com.SkrinVex.syncwave.app.domain.model.Track
 import com.SkrinVex.syncwave.app.ui.theme.StudioAccent
 import com.SkrinVex.syncwave.app.ui.theme.StudioBorder
 import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
+import com.SkrinVex.syncwave.app.ui.theme.StudioEmerald
 import com.SkrinVex.syncwave.app.ui.theme.StudioHover
 import com.SkrinVex.syncwave.app.ui.theme.StudioRed
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
@@ -54,6 +61,7 @@ import com.SkrinVex.syncwave.app.ui.theme.Zinc300
 import com.SkrinVex.syncwave.app.ui.theme.Zinc400
 import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackRowItem(
     track: Track,
@@ -65,6 +73,12 @@ fun TrackRowItem(
     onDelete: () -> Unit,
     onAddToQueue: (() -> Unit)? = null,
     onPlayNext: (() -> Unit)? = null,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+    isDownloaded: Boolean = false,
+    onDownload: (() -> Unit)? = null,
+    onDeleteDownloaded: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -77,26 +91,48 @@ fun TrackRowItem(
             .build()
     }
 
+    val backgroundColor = when {
+        isSelected -> StudioAccent.copy(alpha = 0.14f)
+        isCurrentTrack -> StudioHover
+        else -> StudioSurface
+    }
+
+    val borderColor = when {
+        isSelected -> StudioAccent.copy(alpha = 0.6f)
+        isCurrentTrack -> StudioAccent.copy(alpha = 0.4f)
+        else -> Color.Transparent
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(if (isCurrentTrack) StudioHover else StudioSurface)
-            .border(
-                1.dp,
-                if (isCurrentTrack) StudioAccent.copy(alpha = 0.4f) else Color.Transparent,
-                RoundedCornerShape(10.dp)
+            .background(backgroundColor)
+            .border(1.dp, borderColor, RoundedCornerShape(10.dp))
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
             )
-            .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Track Index / Equalizer Animation
+        // Selection Checkbox OR Track Index / Equalizer Animation
         Box(
             modifier = Modifier.width(28.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (isCurrentTrack) {
+            if (isSelectionMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onClick() },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = StudioAccent,
+                        uncheckedColor = Zinc500,
+                        checkmarkColor = Zinc100
+                    ),
+                    modifier = Modifier.size(20.dp)
+                )
+            } else if (isCurrentTrack) {
                 StudioEqualizerAnimation(
                     isPlaying = isPlaying,
                     maxHeight = 13.dp,
@@ -189,7 +225,18 @@ fun TrackRowItem(
             }
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(6.dp))
+
+        // Downloaded Offline Icon Indicator
+        if (isDownloaded) {
+            Icon(
+                imageVector = Icons.Default.FileDownloadDone,
+                contentDescription = "Скачано на устройство",
+                tint = StudioEmerald,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+        }
 
         // Format Badge
         StudioBadge(
@@ -265,6 +312,47 @@ fun TrackRowItem(
                             onClick = {
                                 showMenu = false
                                 onPlayNext()
+                            }
+                        )
+                    }
+
+                    // Download / Remove from device action
+                    if (isDownloaded && onDeleteDownloaded != null) {
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = null,
+                                        tint = Zinc400,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Удалить с устройства", color = Zinc300, fontSize = 12.sp)
+                                }
+                            },
+                            onClick = {
+                                showMenu = false
+                                onDeleteDownloaded()
+                            }
+                        )
+                    } else if (!isDownloaded && onDownload != null) {
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Download,
+                                        contentDescription = null,
+                                        tint = StudioAccent,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Скачать на устройство", color = Zinc100, fontSize = 12.sp)
+                                }
+                            },
+                            onClick = {
+                                showMenu = false
+                                onDownload()
                             }
                         )
                     }

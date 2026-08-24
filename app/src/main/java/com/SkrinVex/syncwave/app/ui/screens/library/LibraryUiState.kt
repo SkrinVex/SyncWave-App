@@ -25,5 +25,11 @@ data class LibraryUiState(
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val trackToDelete: Track? = null,
+    val selectedTrackIds: Set<String> = emptySet(),
+    val isBatchDeleteConfirmOpen: Boolean = false,
+    val downloadedTrackIds: Set<String> = emptySet(),
     val errorMessage: String? = null
-)
+) {
+    val isSelectionMode: Boolean
+        get() = selectedTrackIds.isNotEmpty()
+}
