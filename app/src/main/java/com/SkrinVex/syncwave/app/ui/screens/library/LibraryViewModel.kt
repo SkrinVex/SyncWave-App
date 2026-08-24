@@ -187,6 +187,14 @@ class LibraryViewModel(
         }
     }
 
+    fun addToQueue(track: Track) {
+        playerManager.addToQueue(track)
+    }
+
+    fun playNext(track: Track) {
+        playerManager.playNextInQueue(track)
+    }
+
     fun confirmDeleteTrack(track: Track) {
         _uiState.update { it.copy(trackToDelete = track) }
     }

@@ -1,9 +1,14 @@
 package com.SkrinVex.syncwave.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,37 +30,40 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -70,14 +78,16 @@ import com.SkrinVex.syncwave.app.ui.theme.StudioAccent
 import com.SkrinVex.syncwave.app.ui.theme.StudioBg
 import com.SkrinVex.syncwave.app.ui.theme.StudioBorder
 import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
+import com.SkrinVex.syncwave.app.ui.theme.StudioEmerald
 import com.SkrinVex.syncwave.app.ui.theme.StudioHover
-import com.SkrinVex.syncwave.app.ui.theme.StudioRed
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
 import com.SkrinVex.syncwave.app.ui.theme.Zinc300
 import com.SkrinVex.syncwave.app.ui.theme.Zinc400
 import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 import com.SkrinVex.syncwave.app.ui.theme.Zinc950
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -92,6 +102,9 @@ fun FullPlayerBottomSheet(
     onSeek: (Long) -> Unit,
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
+    onRewind10: () -> Unit,
+    onForward10: () -> Unit,
+    onSetPlaybackSpeed: (Float) -> Unit,
     onSelectQueueTrack: ((Int) -> Unit)? = null,
     onRemoveFromQueue: ((Int) -> Unit)? = null,
     onReshuffleQueue: (() -> Unit)? = null,
@@ -103,6 +116,12 @@ fun FullPlayerBottomSheet(
     var isSeeking by remember { mutableStateOf(false) }
     var seekPosition by remember { mutableFloatStateOf(0f) }
     var isQueueVisible by remember { mutableStateOf(false) }
+    var showSpeedDialog by remember { mutableStateOf(false) }
+
+    // Double-tap feedback state
+    var showRewindFeedback by remember { mutableStateOf(false) }
+    var showForwardFeedback by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val currentMs = if (isSeeking) seekPosition.toLong() else playerState.currentPositionMs
     val totalMs = if (playerState.durationMs > 0) playerState.durationMs else (track.duration * 1000L).coerceAtLeast(1L)
@@ -111,10 +130,9 @@ fun FullPlayerBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = StudioBg,
-        scrimColor = Color.Black.copy(alpha = 0.75f),
+        scrimColor = Color.Black.copy(alpha = 0.8f),
         dragHandle = null,
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = Modifier.fillMaxSize()
     ) {
         Column(
             modifier = Modifier
@@ -122,14 +140,14 @@ fun FullPlayerBottomSheet(
                 .background(StudioBg)
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(top = 8.dp, start = 20.dp, end = 20.dp, bottom = 16.dp),
+                .padding(top = 8.dp, start = 18.dp, end = 18.dp, bottom = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Header Bar with Top Inset Spacing
+            // Header Toolbar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 6.dp),
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -137,7 +155,7 @@ fun FullPlayerBottomSheet(
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                         .background(StudioElevated)
                 ) {
@@ -149,6 +167,7 @@ fun FullPlayerBottomSheet(
                     )
                 }
 
+                // Center Title
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = if (isQueueVisible) "Очередь воспроизведения" else "Сейчас играет",
@@ -170,7 +189,7 @@ fun FullPlayerBottomSheet(
                 IconButton(
                     onClick = { isQueueVisible = !isQueueVisible },
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                         .background(if (isQueueVisible) StudioAccent.copy(alpha = 0.25f) else StudioElevated)
                 ) {
@@ -183,16 +202,16 @@ fun FullPlayerBottomSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             if (isQueueVisible) {
-                // Queue Content View (Matching Web QueueDrawer)
+                // Queue View
                 Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     // Queue Action Toolbar
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 12.dp),
+                            .padding(bottom = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -222,7 +241,6 @@ fun FullPlayerBottomSheet(
                         }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Reshuffle Queue Button (Like Web)
                             if (playerState.queue.size > 1) {
                                 Row(
                                     modifier = Modifier
@@ -249,7 +267,6 @@ fun FullPlayerBottomSheet(
                                 }
                             }
 
-                            // Clear Queue Button
                             if (playerState.queue.size > 1) {
                                 Row(
                                     modifier = Modifier
@@ -379,7 +396,6 @@ fun FullPlayerBottomSheet(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    // Index
                                     Box(
                                         modifier = Modifier.width(22.dp),
                                         contentAlignment = Alignment.Center
@@ -403,7 +419,6 @@ fun FullPlayerBottomSheet(
 
                                     Spacer(modifier = Modifier.width(6.dp))
 
-                                    // Thumbnail Cover Art in Queue
                                     Box(
                                         modifier = Modifier
                                             .size(34.dp)
@@ -452,7 +467,6 @@ fun FullPlayerBottomSheet(
                                         color = Zinc500
                                     )
 
-                                    // Remove from Queue Button
                                     IconButton(
                                         onClick = { onRemoveFromQueue?.invoke(idx) },
                                         modifier = Modifier.size(24.dp)
@@ -470,12 +484,12 @@ fun FullPlayerBottomSheet(
                     }
                 }
             } else {
-                // Main Artwork View
+                // Main Artwork View with Double-Tap Gestures
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(horizontal = 12.dp),
+                        .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
@@ -485,7 +499,31 @@ fun FullPlayerBottomSheet(
                             .shadow(28.dp, RoundedCornerShape(22.dp), spotColor = StudioAccent.copy(alpha = 0.45f))
                             .clip(RoundedCornerShape(22.dp))
                             .background(StudioElevated)
-                            .border(1.dp, StudioBorder, RoundedCornerShape(22.dp)),
+                            .border(1.dp, StudioBorder, RoundedCornerShape(22.dp))
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onDoubleTap = { offset ->
+                                        if (offset.x < size.width / 2) {
+                                            onRewind10()
+                                            scope.launch {
+                                                showRewindFeedback = true
+                                                delay(650)
+                                                showRewindFeedback = false
+                                            }
+                                        } else {
+                                            onForward10()
+                                            scope.launch {
+                                                showForwardFeedback = true
+                                                delay(650)
+                                                showForwardFeedback = false
+                                            }
+                                        }
+                                    },
+                                    onTap = {
+                                        onPlayPause()
+                                    }
+                                )
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
@@ -494,10 +532,70 @@ fun FullPlayerBottomSheet(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        // Left Rewind Double-Tap Feedback
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = showRewindFeedback,
+                            enter = fadeIn() + scaleIn(initialScale = 0.7f),
+                            exit = fadeOut() + scaleOut(targetScale = 1.2f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.7f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Default.Replay10,
+                                        contentDescription = "-10s",
+                                        tint = Zinc100,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Text(
+                                        text = "-10с",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Zinc100
+                                    )
+                                }
+                            }
+                        }
+
+                        // Right Forward Double-Tap Feedback
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = showForwardFeedback,
+                            enter = fadeIn() + scaleIn(initialScale = 0.7f),
+                            exit = fadeOut() + scaleOut(targetScale = 1.2f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.7f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = Icons.Default.Forward10,
+                                        contentDescription = "+10s",
+                                        tint = Zinc100,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                    Text(
+                                        text = "+10с",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Zinc100
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Title & Artist with Marquee Text
                 Column(
@@ -516,13 +614,70 @@ fun FullPlayerBottomSheet(
                         text = track.artist.ifBlank { "Unknown Artist" },
                         fontSize = 13.sp,
                         color = Zinc400,
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier.padding(top = 3.dp),
                         textAlign = TextAlign.Center,
                         enableMarquee = true
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Audio Info & Speed Auxiliary Pill Bar
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Audio Format & Quality Badges
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        StudioBadge(
+                            text = track.format.uppercase(),
+                            backgroundColor = StudioEmerald.copy(alpha = 0.15f),
+                            textColor = StudioEmerald
+                        )
+
+                        if (track.bitrate > 0) {
+                            StudioBadge(
+                                text = "${track.bitrate} kbps",
+                                backgroundColor = StudioElevated,
+                                textColor = Zinc400
+                            )
+                        }
+                    }
+
+                    // Speed Pill Selector Button
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(StudioElevated)
+                            .border(1.dp, StudioBorder, RoundedCornerShape(8.dp))
+                            .clickable { showSpeedDialog = true }
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Speed,
+                            contentDescription = "Скорость",
+                            tint = if (playerState.playbackSpeed != 1.0f) StudioAccent else Zinc400,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = "${playerState.playbackSpeed}x",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = if (playerState.playbackSpeed != 1.0f) StudioAccent else Zinc300
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Custom Studio Audio Scrubber with Buffering Bar
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -555,24 +710,24 @@ fun FullPlayerBottomSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Playback Control Buttons (Shuffle, Prev, Play/Pause, Next, Repeat)
+                // Full Playback Control Buttons Row with Rewind 10 / Forward 10
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                        .padding(horizontal = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Shuffle
-                    IconButton(onClick = onToggleShuffle) {
+                    // Shuffle Button
+                    IconButton(onClick = onToggleShuffle, modifier = Modifier.size(38.dp)) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
                                 imageVector = Icons.Default.Shuffle,
                                 contentDescription = "Перемешать",
                                 tint = if (playerState.isShuffle) StudioAccent else Zinc500,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                             if (playerState.isShuffle) {
                                 Box(
@@ -585,21 +740,31 @@ fun FullPlayerBottomSheet(
                         }
                     }
 
-                    // Previous
-                    IconButton(onClick = onPrevious, modifier = Modifier.size(44.dp)) {
+                    // Rewind 10 Seconds Button
+                    IconButton(onClick = onRewind10, modifier = Modifier.size(38.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Replay10,
+                            contentDescription = "Назад на 10 сек",
+                            tint = Zinc300,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    // Previous Track Button
+                    IconButton(onClick = onPrevious, modifier = Modifier.size(42.dp)) {
                         Icon(
                             imageVector = Icons.Default.SkipPrevious,
                             contentDescription = "Предыдущий",
                             tint = Zinc100,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
-                    // Main Big Play/Pause Button
+                    // Main Elevated Play/Pause Button
                     Box(
                         modifier = Modifier
-                            .size(64.dp)
-                            .shadow(12.dp, CircleShape, spotColor = StudioAccent.copy(alpha = 0.5f))
+                            .size(62.dp)
+                            .shadow(14.dp, CircleShape, spotColor = StudioAccent.copy(alpha = 0.55f))
                             .clip(CircleShape)
                             .background(Zinc100)
                             .clickable(onClick = onPlayPause),
@@ -607,7 +772,7 @@ fun FullPlayerBottomSheet(
                     ) {
                         if (playerState.isBuffering) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(26.dp),
                                 color = Zinc950,
                                 strokeWidth = 2.5.dp
                             )
@@ -616,29 +781,39 @@ fun FullPlayerBottomSheet(
                                 imageVector = if (playerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                 contentDescription = if (playerState.isPlaying) "Пауза" else "Играть",
                                 tint = Zinc950,
-                                modifier = Modifier.size(34.dp)
+                                modifier = Modifier.size(32.dp)
                             )
                         }
                     }
 
-                    // Next
-                    IconButton(onClick = onNext, modifier = Modifier.size(44.dp)) {
+                    // Next Track Button
+                    IconButton(onClick = onNext, modifier = Modifier.size(42.dp)) {
                         Icon(
                             imageVector = Icons.Default.SkipNext,
                             contentDescription = "Следующий",
                             tint = Zinc100,
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
-                    // Repeat Mode
-                    IconButton(onClick = onCycleRepeat) {
+                    // Forward 10 Seconds Button
+                    IconButton(onClick = onForward10, modifier = Modifier.size(38.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Forward10,
+                            contentDescription = "Вперед на 10 сек",
+                            tint = Zinc300,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    // Repeat Button
+                    IconButton(onClick = onCycleRepeat, modifier = Modifier.size(38.dp)) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
                                 imageVector = if (playerState.repeatMode == RepeatMode.ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
                                 contentDescription = "Повтор",
                                 tint = if (playerState.repeatMode != RepeatMode.OFF) StudioAccent else Zinc500,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                             if (playerState.repeatMode != RepeatMode.OFF) {
                                 Box(
@@ -652,9 +827,86 @@ fun FullPlayerBottomSheet(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
             }
         }
+    }
+
+    // Speed Selection Dialog
+    if (showSpeedDialog) {
+        val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+        AlertDialog(
+            onDismissRequest = { showSpeedDialog = false },
+            containerColor = StudioSurface,
+            shape = RoundedCornerShape(18.dp),
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Speed,
+                        contentDescription = null,
+                        tint = StudioAccent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "Скорость воспроизведения",
+                        color = Zinc100,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    speeds.forEach { speed ->
+                        val isSelected = playerState.playbackSpeed == speed
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) StudioAccent.copy(alpha = 0.2f) else StudioElevated)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) StudioAccent.copy(alpha = 0.6f) else StudioBorder,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable {
+                                    onSetPlaybackSpeed(speed)
+                                    showSpeedDialog = false
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (speed == 1.0f) "1.0x (Обычная)" else "${speed}x",
+                                fontSize = 13.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) StudioAccent else Zinc100
+                            )
+                            if (isSelected) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(StudioAccent)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSpeedDialog = false }) {
+                    Text("Готово", color = StudioAccent, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        )
     }
 }
 

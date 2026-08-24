@@ -521,7 +521,9 @@ fun LibraryScreen(
                         isCurrentTrack = isCurrent,
                         index = index + 1,
                         onClick = { viewModel.playTrack(track, index) },
-                        onDelete = { viewModel.confirmDeleteTrack(track) }
+                        onDelete = { viewModel.confirmDeleteTrack(track) },
+                        onAddToQueue = { viewModel.addToQueue(track) },
+                        onPlayNext = { viewModel.playNext(track) }
                     )
                 }
 

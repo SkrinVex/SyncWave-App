@@ -448,6 +448,61 @@ class AudioPlayerManager(
         }
     }
 
+    fun addToQueue(track: Track) {
+        val state = _playerState.value
+        if (state.currentTrack == null || state.queue.isEmpty()) {
+            playTrack(track)
+            return
+        }
+        val updatedQueue = state.queue + track
+        _playerState.update { it.copy(queue = updatedQueue) }
+    }
+
+    fun playNextInQueue(track: Track) {
+        val state = _playerState.value
+        if (state.currentTrack == null || state.queue.isEmpty()) {
+            playTrack(track)
+            return
+        }
+        val currentIdx = state.currentIndex.coerceAtLeast(0)
+        val updatedQueue = state.queue.toMutableList().apply {
+            add((currentIdx + 1).coerceAtMost(size), track)
+        }
+        _playerState.update { it.copy(queue = updatedQueue) }
+    }
+
+    fun rewind10Seconds() {
+        val cur = _playerState.value.currentPositionMs
+        val target = (cur - 10000L).coerceAtLeast(0L)
+        seekTo(target)
+    }
+
+    fun forward10Seconds() {
+        val cur = _playerState.value.currentPositionMs
+        val maxDuration = _playerState.value.durationMs
+        val target = if (maxDuration > 0L) (cur + 10000L).coerceAtMost(maxDuration) else cur + 10000L
+        seekTo(target)
+    }
+
+    fun setPlaybackSpeed(speed: Float) {
+        val safeSpeed = speed.coerceIn(0.25f, 3.0f)
+        exoPlayer?.setPlaybackSpeed(safeSpeed)
+        _playerState.update { it.copy(playbackSpeed = safeSpeed) }
+    }
+
+    fun cyclePlaybackSpeed() {
+        val current = _playerState.value.playbackSpeed
+        val nextSpeed = when {
+            current < 0.9f -> 1.0f
+            current in 0.9f..1.1f -> 1.25f
+            current in 1.15f..1.35f -> 1.5f
+            current in 1.4f..1.6f -> 2.0f
+            current in 1.8f..2.1f -> 0.75f
+            else -> 1.0f
+        }
+        setPlaybackSpeed(nextSpeed)
+    }
+
     fun seekTo(positionMs: Long) {
         exoPlayer?.seekTo(positionMs)
         _playerState.update { it.copy(currentPositionMs = positionMs) }

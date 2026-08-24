@@ -18,7 +18,8 @@ data class PlayerState(
     val queue: List<Track> = emptyList(),
     val currentIndex: Int = -1,
     val isShuffle: Boolean = false,
-    val repeatMode: RepeatMode = RepeatMode.OFF
+    val repeatMode: RepeatMode = RepeatMode.OFF,
+    val playbackSpeed: Float = 1.0f
 ) {
     val progressFraction: Float
         get() {
