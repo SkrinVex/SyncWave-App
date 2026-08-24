@@ -24,9 +24,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 class DownloadManager(
     private val context: Context,
@@ -242,8 +244,8 @@ class DownloadManager(
             var currentSpeed = 0L
 
             body.byteStream().use { input ->
-                FileOutputStream(tempAudioFile).use { output ->
-                    val buffer = ByteArray(16384)
+                BufferedOutputStream(FileOutputStream(tempAudioFile), 64 * 1024).use { output ->
+                    val buffer = ByteArray(64 * 1024)
                     var read: Int
 
                     while (input.read(buffer).also { read = it } != -1) {
@@ -304,14 +306,18 @@ class DownloadManager(
             if (targetAudioFile.exists()) targetAudioFile.delete()
             tempAudioFile.renameTo(targetAudioFile)
 
-            // 2. Download Cover art (optional, best effort)
+            // 2. Download Cover art (optional, best effort with short timeout to prevent CDN blocking)
             var savedCoverPath: String? = null
             try {
                 val coverRequest = Request.Builder()
                     .url(coverUrl)
                     .addHeader("Authorization", "Bearer $token")
                     .build()
-                val coverResponse = okHttpClient.newCall(coverRequest).execute()
+                val coverClient = okHttpClient.newBuilder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(8, TimeUnit.SECONDS)
+                    .build()
+                val coverResponse = coverClient.newCall(coverRequest).execute()
                 if (coverResponse.isSuccessful && coverResponse.body != null) {
                     coverResponse.body!!.byteStream().use { cInput ->
                         FileOutputStream(tempCoverFile).use { cOutput ->
