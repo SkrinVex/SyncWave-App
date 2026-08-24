@@ -130,66 +130,6 @@ fun LibraryScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Stats Banner
-        StudioCard(
-            modifier = Modifier.fillMaxWidth(),
-            backgroundColor = StudioSurface,
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "${uiState.stats.totalTracks}",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = StudioAccent
-                    )
-                    Text("Всего треков", fontSize = 10.sp, color = Zinc400)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .height(24.dp)
-                        .background(StudioBorder)
-                )
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = uiState.stats.formattedTotalDuration,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Zinc100
-                    )
-                    Text("Длительность", fontSize = 10.sp, color = Zinc400)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .height(24.dp)
-                        .background(StudioBorder)
-                )
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = uiState.stats.formattedTotalStorageSize,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Zinc100
-                    )
-                    Text("Объем медиа", fontSize = 10.sp, color = Zinc400)
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         // Actions Row (Play All, Shuffle All, Sort, View Mode)
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -3,27 +3,22 @@ package com.SkrinVex.syncwave.app.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -36,7 +31,6 @@ import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
 import com.SkrinVex.syncwave.app.ui.theme.Zinc400
-import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 
 @Composable
 fun TrackCardItem(
@@ -47,88 +41,68 @@ fun TrackCardItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    StudioCard(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(StudioSurface)
-            .border(1.dp, if (isCurrentTrack) StudioAccent.copy(alpha = 0.5f) else StudioBorder, RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(8.dp)
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        backgroundColor = StudioSurface,
+        shape = RoundedCornerShape(12.dp)
     ) {
-        // High-res square cover thumbnail with floating play overlay
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(StudioElevated),
-            contentAlignment = Alignment.Center
-        ) {
-            AsyncImage(
-                model = coverUrl,
-                contentDescription = track.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.matchParentSize()
-            )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Artwork Image with Equalizer overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(StudioElevated)
+                    .border(0.5.dp, StudioBorder, RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = track.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
 
-            if (isCurrentTrack && isPlaying) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(StudioAccent.copy(alpha = 0.9f))
-                        .shadow(8.dp, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = null,
-                        tint = Zinc100,
-                        modifier = Modifier.size(20.dp)
-                    )
+                if (isCurrentTrack) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        StudioEqualizerAnimation(
+                            isPlaying = isPlaying,
+                            maxHeight = 22.dp,
+                            barWidth = 4.dp,
+                            color = StudioAccent
+                        )
+                    }
                 }
             }
-        }
 
-        // Title
-        Text(
-            text = track.title,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = if (isCurrentTrack) StudioAccent else Zinc100,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp)
-        )
+            Spacer(modifier = Modifier.height(8.dp))
 
-        // Artist
-        Text(
-            text = track.artist,
-            fontSize = 11.sp,
-            color = Zinc400,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 2.dp)
-        )
-
-        // Footer info (Duration & Format)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+            // Title
             Text(
-                text = track.formattedDuration,
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                color = Zinc500
+                text = track.title,
+                fontSize = 12.sp,
+                fontWeight = if (isCurrentTrack) FontWeight.Bold else FontWeight.Medium,
+                color = if (isCurrentTrack) StudioAccent else Zinc100,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            StudioBadge(
-                text = track.format.uppercase(),
-                backgroundColor = StudioElevated,
-                textColor = Zinc400
+
+            // Artist
+            Text(
+                text = track.artist.ifBlank { "Unknown Artist" },
+                fontSize = 10.sp,
+                color = Zinc400,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp)
             )
         }
     }

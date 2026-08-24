@@ -4,12 +4,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.SkrinVex.syncwave.app.domain.model.Resource
+import com.SkrinVex.syncwave.app.domain.usecase.auth.CheckAuthStatusUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.GetCurrentUserUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.GetSavedSessionUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.GetServerUrlUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.LogoutUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.SaveServerUrlUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.settings.GetSettingsUseCase
+import com.SkrinVex.syncwave.app.domain.usecase.track.GetLibraryStatsUseCase
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -26,9 +28,11 @@ sealed class SettingsEvent {
 class SettingsViewModel(
     private val getCurrentUserUseCase: GetCurrentUserUseCase,
     private val getSettingsUseCase: GetSettingsUseCase,
+    private val getLibraryStatsUseCase: GetLibraryStatsUseCase,
     private val getSavedSessionUseCase: GetSavedSessionUseCase,
     private val getServerUrlUseCase: GetServerUrlUseCase,
     private val saveServerUrlUseCase: SaveServerUrlUseCase,
+    private val checkAuthStatusUseCase: CheckAuthStatusUseCase,
     private val logoutUseCase: LogoutUseCase
 ) : ViewModel() {
 
@@ -54,7 +58,7 @@ class SettingsViewModel(
                 )
             }
 
-            // Fetch live user & settings
+            // Fetch live user profile
             when (val uResult = getCurrentUserUseCase()) {
                 is Resource.Success -> {
                     _uiState.update { it.copy(user = uResult.data) }
@@ -63,6 +67,16 @@ class SettingsViewModel(
                 Resource.Loading -> {}
             }
 
+            // Fetch library stats
+            when (val stResult = getLibraryStatsUseCase()) {
+                is Resource.Success -> {
+                    _uiState.update { it.copy(stats = stResult.data) }
+                }
+                is Resource.Error -> {}
+                Resource.Loading -> {}
+            }
+
+            // Fetch server settings & diagnostics
             when (val sResult = getSettingsUseCase()) {
                 is Resource.Success -> {
                     _uiState.update { it.copy(settings = sResult.data) }
@@ -92,7 +106,7 @@ class SettingsViewModel(
 
     fun saveServerUrl() {
         viewModelScope.launch {
-            val url = _uiState.value.newServerUrl
+            val url = _uiState.value.newServerUrl.trim()
             saveServerUrlUseCase(url)
             val updatedUrl = getServerUrlUseCase()
             _uiState.update {
@@ -100,6 +114,33 @@ class SettingsViewModel(
                     serverUrl = updatedUrl,
                     isEditServerUrlModalOpen = false
                 )
+            }
+            loadData()
+        }
+    }
+
+    fun testConnection() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isTestingConnection = true, connectionTestResult = null) }
+            val url = _uiState.value.serverUrl
+            when (val res = checkAuthStatusUseCase(url)) {
+                is Resource.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isTestingConnection = false,
+                            connectionTestResult = "Подключение успешно (SyncWave v1.0.0)"
+                        )
+                    }
+                }
+                is Resource.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isTestingConnection = false,
+                            connectionTestResult = res.message ?: "Ошибка подключения"
+                        )
+                    }
+                }
+                Resource.Loading -> {}
             }
         }
     }
@@ -114,9 +155,11 @@ class SettingsViewModel(
     class Factory(
         private val getCurrentUserUseCase: GetCurrentUserUseCase,
         private val getSettingsUseCase: GetSettingsUseCase,
+        private val getLibraryStatsUseCase: GetLibraryStatsUseCase,
         private val getSavedSessionUseCase: GetSavedSessionUseCase,
         private val getServerUrlUseCase: GetServerUrlUseCase,
         private val saveServerUrlUseCase: SaveServerUrlUseCase,
+        private val checkAuthStatusUseCase: CheckAuthStatusUseCase,
         private val logoutUseCase: LogoutUseCase
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -124,9 +167,11 @@ class SettingsViewModel(
             return SettingsViewModel(
                 getCurrentUserUseCase,
                 getSettingsUseCase,
+                getLibraryStatsUseCase,
                 getSavedSessionUseCase,
                 getServerUrlUseCase,
                 saveServerUrlUseCase,
+                checkAuthStatusUseCase,
                 logoutUseCase
             ) as T
         }

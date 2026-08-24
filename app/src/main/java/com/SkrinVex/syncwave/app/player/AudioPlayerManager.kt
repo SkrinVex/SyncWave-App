@@ -1,14 +1,23 @@
 package com.SkrinVex.syncwave.app.player
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.annotation.OptIn
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
+import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaSession
 import com.SkrinVex.syncwave.app.data.local.SessionDataStore
 import com.SkrinVex.syncwave.app.domain.model.Track
 import com.SkrinVex.syncwave.app.domain.repository.TrackRepository
@@ -19,11 +28,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import java.io.File
 
 @OptIn(UnstableApi::class)
 class AudioPlayerManager(
@@ -32,56 +40,101 @@ class AudioPlayerManager(
     private val trackRepository: TrackRepository
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + Job())
-    private var exoPlayer: ExoPlayer? = null
+    var exoPlayer: ExoPlayer? = null
+        private set
+    private var mediaSession: MediaSession? = null
     private var progressJob: Job? = null
+    private var simpleCache: SimpleCache? = null
 
     private val _playerState = MutableStateFlow(PlayerState())
     val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
 
     init {
-        setupPlayer()
+        setupCacheAndPlayer()
     }
 
-    private fun setupPlayer() {
-        exoPlayer = ExoPlayer.Builder(context).build().apply {
-            addListener(object : Player.Listener {
-                override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    _playerState.update { it.copy(isPlaying = isPlaying) }
-                    if (isPlaying) {
-                        startProgressUpdates()
-                    } else {
-                        stopProgressUpdates()
-                    }
-                }
+    private fun setupCacheAndPlayer() {
+        try {
+            val cacheDir = File(context.cacheDir, "media_cache")
+            val evictor = LeastRecentlyUsedCacheEvictor(500L * 1024 * 1024) // 500 MB Audio Cache
+            val databaseProvider = StandaloneDatabaseProvider(context)
+            simpleCache = SimpleCache(cacheDir, evictor, databaseProvider)
+        } catch (_: Exception) {}
 
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    when (playbackState) {
-                        Player.STATE_BUFFERING -> {
-                            _playerState.update { it.copy(isBuffering = true) }
-                        }
-                        Player.STATE_READY -> {
-                            _playerState.update {
-                                it.copy(
-                                    isBuffering = false,
-                                    durationMs = duration.coerceAtLeast(0L),
-                                    currentPositionMs = currentPosition.coerceAtLeast(0L)
-                                )
-                            }
-                        }
-                        Player.STATE_ENDED -> {
-                            handleTrackEnded()
-                        }
-                        Player.STATE_IDLE -> {
-                            _playerState.update { it.copy(isBuffering = false) }
-                        }
-                    }
-                }
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(30000)
 
-                override fun onPlayerError(error: PlaybackException) {
-                    _playerState.update { it.copy(isBuffering = false, isPlaying = false) }
-                }
-            })
+        val dataSourceFactory = if (simpleCache != null) {
+            CacheDataSource.Factory()
+                .setCache(simpleCache!!)
+                .setUpstreamDataSourceFactory(httpDataSourceFactory)
+                .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+        } else {
+            httpDataSourceFactory
         }
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(context)
+            .setDataSourceFactory(dataSourceFactory)
+
+        val player = ExoPlayer.Builder(context)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .build()
+
+        player.addListener(object : Player.Listener {
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                _playerState.update { it.copy(isPlaying = isPlaying) }
+                if (isPlaying) {
+                    startProgressUpdates()
+                    startMediaService()
+                } else {
+                    stopProgressUpdates()
+                }
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                when (playbackState) {
+                    Player.STATE_BUFFERING -> {
+                        _playerState.update { it.copy(isBuffering = true) }
+                    }
+                    Player.STATE_READY -> {
+                        _playerState.update {
+                            it.copy(
+                                isBuffering = false,
+                                durationMs = player.duration.coerceAtLeast(0L),
+                                currentPositionMs = player.currentPosition.coerceAtLeast(0L)
+                            )
+                        }
+                    }
+                    Player.STATE_ENDED -> {
+                        handleTrackEnded()
+                    }
+                    Player.STATE_IDLE -> {
+                        _playerState.update { it.copy(isBuffering = false) }
+                    }
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                _playerState.update { it.copy(isBuffering = false, isPlaying = false) }
+            }
+        })
+
+        exoPlayer = player
+
+        try {
+            mediaSession = MediaSession.Builder(context, player)
+                .setId("SyncWaveAudioSession")
+                .build()
+        } catch (_: Exception) {}
+    }
+
+    private fun startMediaService() {
+        try {
+            val intent = Intent(context, SyncWaveMediaService::class.java)
+            ContextCompat.startForegroundService(context, intent)
+        } catch (_: Exception) {}
     }
 
     fun playTrackList(tracks: List<Track>, startIndex: Int = 0, shuffle: Boolean = false) {
@@ -102,18 +155,19 @@ class AudioPlayerManager(
     }
 
     fun playTrack(track: Track) {
-        val token = runBlocking { sessionDataStore.tokenFlow.first() } ?: ""
+        val token = sessionDataStore.getTokenCached() ?: ""
         val streamUrl = trackRepository.getStreamUrl(track.id, token)
         val coverUrl = trackRepository.getCoverUrl(track.id, token)
 
         val mediaMetadata = MediaMetadata.Builder()
             .setTitle(track.title)
-            .setArtist(track.artist)
-            .setAlbumTitle(track.album)
+            .setArtist(track.artist.ifBlank { "Unknown Artist" })
+            .setAlbumTitle(track.album.ifBlank { "SyncWave" })
             .setArtworkUri(Uri.parse(coverUrl))
             .build()
 
         val mediaItem = MediaItem.Builder()
+            .setMediaId(track.id)
             .setUri(Uri.parse(streamUrl))
             .setMediaMetadata(mediaMetadata)
             .build()
@@ -133,6 +187,14 @@ class AudioPlayerManager(
             player.setMediaItem(mediaItem)
             player.prepare()
             player.play()
+        }
+    }
+
+    fun skipToQueueItem(index: Int) {
+        val queue = _playerState.value.queue
+        if (index in queue.indices) {
+            _playerState.update { it.copy(currentIndex = index) }
+            playTrack(queue[index])
         }
     }
 
@@ -194,7 +256,20 @@ class AudioPlayerManager(
 
     fun toggleShuffle() {
         val currentShuffle = _playerState.value.isShuffle
-        _playerState.update { it.copy(isShuffle = !currentShuffle) }
+        val nextShuffle = !currentShuffle
+        _playerState.update { state ->
+            val curTrack = state.currentTrack
+            val newQueue = if (nextShuffle) {
+                if (curTrack != null) {
+                    listOf(curTrack) + (state.queue - curTrack).shuffled()
+                } else {
+                    state.queue.shuffled()
+                }
+            } else {
+                state.queue
+            }
+            state.copy(isShuffle = nextShuffle, queue = newQueue, currentIndex = 0)
+        }
     }
 
     fun cycleRepeatMode() {
@@ -242,7 +317,13 @@ class AudioPlayerManager(
 
     fun release() {
         stopProgressUpdates()
+        mediaSession?.release()
+        mediaSession = null
         exoPlayer?.release()
         exoPlayer = null
+        try {
+            simpleCache?.release()
+            simpleCache = null
+        } catch (_: Exception) {}
     }
 }

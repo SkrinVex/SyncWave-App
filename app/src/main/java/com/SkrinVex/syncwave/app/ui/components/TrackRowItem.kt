@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -16,8 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -31,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -46,7 +46,6 @@ import com.SkrinVex.syncwave.app.ui.theme.StudioHover
 import com.SkrinVex.syncwave.app.ui.theme.StudioRed
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
-import com.SkrinVex.syncwave.app.ui.theme.Zinc300
 import com.SkrinVex.syncwave.app.ui.theme.Zinc400
 import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 
@@ -68,33 +67,38 @@ fun TrackRowItem(
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(if (isCurrentTrack) StudioHover else StudioSurface)
+            .border(
+                1.dp,
+                if (isCurrentTrack) StudioAccent.copy(alpha = 0.4f) else Color.Transparent,
+                RoundedCornerShape(10.dp)
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Track Index or Equalizer
+        // Track Index / Equalizer Animation
         Box(
             modifier = Modifier.width(28.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (isCurrentTrack && isPlaying) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = StudioAccent,
-                    modifier = Modifier.size(16.dp)
+            if (isCurrentTrack) {
+                StudioEqualizerAnimation(
+                    isPlaying = isPlaying,
+                    maxHeight = 13.dp,
+                    barWidth = 2.5.dp,
+                    color = StudioAccent
                 )
             } else {
                 Text(
                     text = "$index",
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
-                    color = if (isCurrentTrack) StudioAccent else Zinc500
+                    color = Zinc500
                 )
             }
         }
 
-        // Cover Art Thumbnail
+        // Cover Art Thumbnail with playing overlay
         Box(
             modifier = Modifier
                 .size(42.dp)
@@ -107,8 +111,24 @@ fun TrackRowItem(
                 model = coverUrl,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(42.dp)
+                modifier = Modifier.fillMaxSize()
             )
+
+            if (isCurrentTrack) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.5f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    StudioEqualizerAnimation(
+                        isPlaying = isPlaying,
+                        maxHeight = 12.dp,
+                        barWidth = 2.dp,
+                        color = Color.White
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -121,7 +141,7 @@ fun TrackRowItem(
             Text(
                 text = track.title,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
+                fontWeight = if (isCurrentTrack) FontWeight.SemiBold else FontWeight.Medium,
                 color = if (isCurrentTrack) StudioAccent else Zinc100,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -131,7 +151,7 @@ fun TrackRowItem(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = track.artist,
+                    text = track.artist.ifBlank { "Unknown Artist" },
                     fontSize = 11.sp,
                     color = Zinc400,
                     maxLines = 1,

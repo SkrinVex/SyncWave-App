@@ -1,5 +1,6 @@
 package com.SkrinVex.syncwave.app.ui.screens.settings
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,17 +16,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AdminPanelSettings
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -40,8 +48,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,6 +67,7 @@ import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
 import com.SkrinVex.syncwave.app.ui.theme.StudioEmerald
 import com.SkrinVex.syncwave.app.ui.theme.StudioRed
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
+import com.SkrinVex.syncwave.app.ui.theme.StudioWarn
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
 import com.SkrinVex.syncwave.app.ui.theme.Zinc300
 import com.SkrinVex.syncwave.app.ui.theme.Zinc400
@@ -86,79 +98,93 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // Header
-        Text(
-            text = "Настройки",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            color = Zinc100
-        )
+        Column {
+            Text(
+                text = "Настройки",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Zinc100
+            )
+            Text(
+                text = "Параметры системы, хранилище и диагностика",
+                fontSize = 12.sp,
+                color = Zinc400,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
 
-        // User Profile Card
+        // Section 1: Library & Storage Statistics Card (Moved from LibraryView)
         StudioCard(
             modifier = Modifier.fillMaxWidth(),
             backgroundColor = StudioSurface,
             shape = RoundedCornerShape(16.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(StudioAccent.copy(alpha = 0.15f))
-                                .border(1.dp, StudioAccent.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (uiState.user?.isAdmin == true) Icons.Default.AdminPanelSettings else Icons.Default.Person,
-                                contentDescription = null,
-                                tint = StudioAccent,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        Column {
-                            Text(
-                                text = uiState.user?.username ?: "Пользователь",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Zinc100
-                            )
-                            Text(
-                                text = if (uiState.user?.isAdmin == true) "Администратор сервера" else "Пользователь",
-                                fontSize = 11.sp,
-                                color = Zinc400
-                            )
-                        }
-                    }
-
-                    if (uiState.user?.isAdmin == true) {
-                        StudioBadge(
-                            text = "ADMIN",
-                            backgroundColor = StudioAccent.copy(alpha = 0.2f),
-                            textColor = StudioAccent
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Analytics,
+                        contentDescription = null,
+                        tint = StudioAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "Статистика медиатеки",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Zinc100
+                    )
                 }
 
-                // Storage Quota Progress
+                // 4-Card Metrics Grid
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MetricMiniCard(
+                        title = "Треков в библиотеке",
+                        value = "${uiState.stats.totalTracks}",
+                        icon = Icons.Default.Storage,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MetricMiniCard(
+                        title = "Длительность",
+                        value = uiState.stats.formattedTotalDuration,
+                        icon = Icons.Default.Timer,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MetricMiniCard(
+                        title = "Объем аудиофайлов",
+                        value = uiState.stats.formattedTotalStorageSize,
+                        icon = Icons.Default.Storage,
+                        modifier = Modifier.weight(1f)
+                    )
+                    MetricMiniCard(
+                        title = "База SQLite (WAL)",
+                        value = uiState.settings.formattedDbSize,
+                        icon = Icons.Default.Tune,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // Storage Quota Progress Bar
                 if (uiState.settings.userStorageQuotaBytes > 0) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Использование квоты", fontSize = 11.sp, color = Zinc400)
+                            Text("Использование дисковой квоты", fontSize = 11.sp, color = Zinc400)
                             Text(
-                                text = "${uiState.settings.formattedUserStorage} / ${uiState.settings.formattedUserQuota}",
+                                text = "${uiState.settings.formattedUserStorage} / ${uiState.settings.formattedUserQuota} (${(uiState.settings.quotaUsageFraction * 100).toInt()}%)",
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,
                                 color = Zinc300
@@ -168,8 +194,8 @@ fun SettingsScreen(
                             progress = { uiState.settings.quotaUsageFraction },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp)),
                             color = StudioAccent,
                             trackColor = StudioElevated
                         )
@@ -178,13 +204,13 @@ fun SettingsScreen(
             }
         }
 
-        // Server Connection Card
+        // Section 2: Server Connection Card
         StudioCard(
             modifier = Modifier.fillMaxWidth(),
             backgroundColor = StudioSurface,
             shape = RoundedCornerShape(16.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -209,18 +235,20 @@ fun SettingsScreen(
                     }
 
                     StudioBadge(
-                        text = "ACTIVE",
+                        text = "ONLINE",
                         backgroundColor = StudioEmerald.copy(alpha = 0.15f),
                         textColor = StudioEmerald
                     )
                 }
 
+                // Server URL Box
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(10.dp))
                         .background(StudioElevated)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                        .border(1.dp, StudioBorder, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -231,22 +259,72 @@ fun SettingsScreen(
                         color = Zinc300,
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(
-                        onClick = { viewModel.openEditServerUrlModal() },
-                        modifier = Modifier.size(24.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        IconButton(
+                            onClick = { viewModel.testConnection() },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            if (uiState.isTestingConnection) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    color = StudioAccent,
+                                    strokeWidth = 1.5.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Проверить",
+                                    tint = Zinc400,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.openEditServerUrlModal() },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Изменить",
+                                tint = StudioAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Connection Test Banner
+                AnimatedVisibility(visible = !uiState.connectionTestResult.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(StudioElevated)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Изменить",
-                            tint = StudioAccent,
-                            modifier = Modifier.size(16.dp)
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = StudioEmerald,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = uiState.connectionTestResult ?: "",
+                            fontSize = 11.sp,
+                            color = Zinc300
                         )
                     }
                 }
             }
         }
 
-        // System Diagnostics Card
+        // Section 3: System Information & Diagnostics (Matching Web Diag)
         StudioCard(
             modifier = Modifier.fillMaxWidth(),
             backgroundColor = StudioSurface,
@@ -271,21 +349,90 @@ fun SettingsScreen(
                     )
                 }
 
-                SettingsMetricRow("Аудиокодек", uiState.settings.audioFormat.uppercase())
-                SettingsMetricRow("Статус Cookies", uiState.settings.cookiesStatus.uppercase())
-                SettingsMetricRow("Всего треков на сервере", "${uiState.settings.totalTracksCount}")
-                SettingsMetricRow("Версия yt-dlp", uiState.settings.ytdlpVersion.ifBlank { "Встроенный" })
-                SettingsMetricRow("Версия FFmpeg", uiState.settings.ffmpegVersion.ifBlank { "Встроенный" })
+                SettingsMetricRow("Аудиокодек сервера", uiState.settings.audioFormat.uppercase())
+                SettingsMetricRow("Статус Cookies YouTube", uiState.settings.cookiesStatus.uppercase())
+                SettingsMetricRow("Версия yt-dlp", uiState.settings.ytdlpVersion.ifBlank { "Ready" })
+                SettingsMetricRow("Версия FFmpeg", uiState.settings.ffmpegVersion.ifBlank { "Ready" })
+                if (uiState.settings.hostDiskFreeBytes > 0) {
+                    SettingsMetricRow("Свободно на сервере", uiState.settings.formattedHostDiskFree)
+                }
             }
         }
 
-        // Logout Button
-        StudioButton(
-            text = "Выйти из аккаунта",
-            onClick = { showLogoutDialog = true },
-            backgroundColor = StudioElevated,
-            textColor = StudioRed,
-            icon = Icons.Default.ExitToApp
+        // Section 4: User Profile & Logout
+        StudioCard(
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = StudioSurface,
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(StudioAccent.copy(alpha = 0.15f))
+                                .border(1.dp, StudioAccent.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (uiState.user?.isAdmin == true) Icons.Default.AdminPanelSettings else Icons.Default.Person,
+                                contentDescription = null,
+                                tint = StudioAccent,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Column {
+                            Text(
+                                text = uiState.user?.username ?: "Пользователь",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Zinc100
+                            )
+                            Text(
+                                text = if (uiState.user?.isAdmin == true) "Администратор SyncWave" else "Пользователь",
+                                fontSize = 11.sp,
+                                color = Zinc400
+                            )
+                        }
+                    }
+
+                    if (uiState.user?.isAdmin == true) {
+                        StudioBadge(
+                            text = "ADMIN",
+                            backgroundColor = StudioAccent.copy(alpha = 0.2f),
+                            textColor = StudioAccent
+                        )
+                    }
+                }
+
+                StudioButton(
+                    text = "Выйти из учетной записи",
+                    onClick = { showLogoutDialog = true },
+                    backgroundColor = StudioElevated,
+                    textColor = StudioRed,
+                    icon = Icons.AutoMirrored.Filled.ExitToApp
+                )
+            }
+        }
+
+        // Project Footer
+        Text(
+            text = "SyncWave • v1.0.0 • Studio Engine",
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            color = Zinc500,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            textAlign = TextAlign.Center
         )
     }
 
@@ -296,7 +443,7 @@ fun SettingsScreen(
             containerColor = StudioSurface,
             shape = RoundedCornerShape(18.dp),
             title = {
-                Text("Сменить сервер", color = Zinc100, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Сменить адрес сервера", color = Zinc100, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -332,7 +479,7 @@ fun SettingsScreen(
                 Text("Выход из системы", color = Zinc100, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             },
             text = {
-                Text("Вы уверены, что хотите выйти из учетной записи?", color = Zinc400, fontSize = 13.sp)
+                Text("Вы уверены, что хотите выйти из аккаунта? Потребуется повторный вход.", color = Zinc400, fontSize = 13.sp)
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -348,6 +495,38 @@ fun SettingsScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+fun MetricMiniCard(
+    title: String,
+    value: String,
+    icon: ImageVector,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(StudioElevated)
+            .border(1.dp, StudioBorder, RoundedCornerShape(10.dp))
+            .padding(10.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = title,
+                fontSize = 10.sp,
+                color = Zinc400,
+                maxLines = 1
+            )
+            Text(
+                text = value,
+                fontSize = 13.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                color = Zinc100
+            )
+        }
     }
 }
 

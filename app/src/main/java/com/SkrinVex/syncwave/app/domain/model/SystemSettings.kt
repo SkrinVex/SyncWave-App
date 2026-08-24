@@ -19,6 +19,9 @@ data class SystemSettings(
     val totalPlaylistsCount: Int = 0,
     val userStorageUsageBytes: Long = 0L,
     val userStorageQuotaBytes: Long = 0L,
+    val hostDiskTotalBytes: Long = 0L,
+    val hostDiskUsedBytes: Long = 0L,
+    val hostDiskFreeBytes: Long = 0L,
     val isAdmin: Boolean = false
 ) {
     val formattedUserStorage: String
@@ -42,5 +45,21 @@ data class SystemSettings(
         get() {
             if (userStorageQuotaBytes <= 0) return 0f
             return (userStorageUsageBytes.toFloat() / userStorageQuotaBytes.toFloat()).coerceIn(0f, 1f)
+        }
+
+    val formattedDbSize: String
+        get() {
+            val kb = databaseSizeBytes.toDouble() / 1024
+            return if (kb > 1024) {
+                String.format("%.2f MB", kb / 1024)
+            } else {
+                String.format("%.1f KB", kb)
+            }
+        }
+
+    val formattedHostDiskFree: String
+        get() {
+            val gb = hostDiskFreeBytes.toDouble() / (1024 * 1024 * 1024)
+            return String.format("%.1f GB свободно", gb)
         }
 }

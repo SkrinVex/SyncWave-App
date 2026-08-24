@@ -187,9 +187,11 @@ fun MainScreen(
                         factory = SettingsViewModel.Factory(
                             container.getCurrentUserUseCase,
                             container.getSettingsUseCase,
+                            container.getLibraryStatsUseCase,
                             container.getSavedSessionUseCase,
                             container.getServerUrlUseCase,
                             container.saveServerUrlUseCase,
+                            container.checkAuthStatusUseCase,
                             container.logoutUseCase
                         )
                     )
@@ -214,7 +216,8 @@ fun MainScreen(
             onPrevious = { playerManager.playPrevious() },
             onSeek = { targetMs -> playerManager.seekTo(targetMs) },
             onToggleShuffle = { playerManager.toggleShuffle() },
-            onCycleRepeat = { playerManager.cycleRepeatMode() }
+            onCycleRepeat = { playerManager.cycleRepeatMode() },
+            onSelectQueueTrack = { index -> playerManager.skipToQueueItem(index) }
         )
     }
 }
