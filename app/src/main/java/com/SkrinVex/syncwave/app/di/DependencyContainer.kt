@@ -121,6 +121,16 @@ class DependencyContainer(val context: Context) {
         SettingsRepositoryImpl(apiService)
     }
 
+    // Upload Manager
+    val uploadManager: com.SkrinVex.syncwave.app.upload.UploadManager by lazy {
+        com.SkrinVex.syncwave.app.upload.UploadManager(apiService, trackRepository, playlistRepository)
+    }
+
+    // Google Auth / Cookie Manager
+    val googleAuthManager: com.SkrinVex.syncwave.app.cookies.GoogleAuthManager by lazy {
+        com.SkrinVex.syncwave.app.cookies.GoogleAuthManager(settingsRepository)
+    }
+
     // Audio Player Manager
     val audioPlayerManager: AudioPlayerManager by lazy {
         AudioPlayerManager(context, sessionDataStore, trackRepository)

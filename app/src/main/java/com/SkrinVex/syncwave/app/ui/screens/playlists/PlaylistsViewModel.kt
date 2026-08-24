@@ -1,8 +1,10 @@
 package com.SkrinVex.syncwave.app.ui.screens.playlists
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.SkrinVex.syncwave.app.domain.model.Playlist
 import com.SkrinVex.syncwave.app.domain.model.Resource
 import com.SkrinVex.syncwave.app.domain.usecase.playlist.CreatePlaylistUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.playlist.DeletePlaylistUseCase
@@ -47,10 +49,13 @@ class PlaylistsViewModel(
         _uiState.update {
             it.copy(
                 isAddModalOpen = true,
+                creationType = PlaylistCreationType.YOUTUBE_SYNC,
                 newTitle = "",
                 newUrlOrId = "",
                 newAutoSync = true,
                 newIntervalMinutes = 60,
+                selectedAudioUris = emptyList(),
+                selectedAudioCount = 0,
                 errorMessage = null
             )
         }
@@ -58,6 +63,10 @@ class PlaylistsViewModel(
 
     fun closeAddModal() {
         _uiState.update { it.copy(isAddModalOpen = false) }
+    }
+
+    fun setCreationType(type: PlaylistCreationType) {
+        _uiState.update { it.copy(creationType = type, errorMessage = null) }
     }
 
     fun setPresetLikedMusic() {
@@ -81,31 +90,95 @@ class PlaylistsViewModel(
         _uiState.update { it.copy(newAutoSync = autoSync) }
     }
 
-    fun createPlaylist() {
-        val state = _uiState.value
-        if (state.newTitle.isBlank() || state.newUrlOrId.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "Заполните все обязательные поля") }
-            return
-        }
+    fun onNewIntervalMinutesChange(minutes: Int) {
+        _uiState.update { it.copy(newIntervalMinutes = minutes) }
+    }
 
-        viewModelScope.launch {
-            _uiState.update { it.copy(isCreating = true, errorMessage = null) }
-            val result = createPlaylistUseCase(
-                title = state.newTitle,
-                urlOrId = state.newUrlOrId,
-                autoSync = state.newAutoSync,
-                syncIntervalMinutes = state.newIntervalMinutes
+    fun setSelectedAudioFiles(uris: List<Uri>) {
+        _uiState.update {
+            it.copy(
+                selectedAudioUris = uris,
+                selectedAudioCount = uris.size
             )
+        }
+    }
 
-            when (result) {
-                is Resource.Success -> {
-                    _uiState.update { it.copy(isCreating = false, isAddModalOpen = false) }
-                    fetchPlaylists()
+    fun removeSelectedAudioFile(index: Int) {
+        _uiState.update { state ->
+            val updated = state.selectedAudioUris.toMutableList().apply {
+                if (index in indices) removeAt(index)
+            }
+            state.copy(selectedAudioUris = updated, selectedAudioCount = updated.size)
+        }
+    }
+
+    fun createPlaylist(onSuccessUpload: ((playlistId: String, uris: List<Uri>) -> Unit)? = null) {
+        val state = _uiState.value
+
+        if (state.creationType == PlaylistCreationType.YOUTUBE_SYNC) {
+            if (state.newUrlOrId.isBlank()) {
+                _uiState.update { it.copy(errorMessage = "Укажите ссылку или ID плейлиста YouTube") }
+                return
+            }
+
+            viewModelScope.launch {
+                _uiState.update { it.copy(isCreating = true, errorMessage = null) }
+                val result = createPlaylistUseCase(
+                    title = state.newTitle,
+                    urlOrId = state.newUrlOrId,
+                    autoSync = state.newAutoSync,
+                    syncIntervalMinutes = if (state.newAutoSync) state.newIntervalMinutes else 0
+                )
+
+                when (result) {
+                    is Resource.Success -> {
+                        _uiState.update { it.copy(isCreating = false, isAddModalOpen = false) }
+                        fetchPlaylists()
+                    }
+                    is Resource.Error -> {
+                        _uiState.update { it.copy(isCreating = false, errorMessage = result.message) }
+                    }
+                    Resource.Loading -> {}
                 }
-                is Resource.Error -> {
-                    _uiState.update { it.copy(isCreating = false, errorMessage = result.message) }
+            }
+        } else {
+            // MANUAL_UPLOAD
+            if (state.newTitle.isBlank()) {
+                _uiState.update { it.copy(errorMessage = "Введите название плейлиста") }
+                return
+            }
+
+            viewModelScope.launch {
+                _uiState.update { it.copy(isCreating = true, errorMessage = null) }
+                val result = createPlaylistUseCase(
+                    title = state.newTitle,
+                    urlOrId = "MANUAL",
+                    autoSync = false,
+                    syncIntervalMinutes = 0
+                )
+
+                when (result) {
+                    is Resource.Success -> {
+                        val playlist = result.data
+                        val urisToUpload = state.selectedAudioUris
+                        _uiState.update {
+                            it.copy(
+                                isCreating = false,
+                                isAddModalOpen = false,
+                                selectedAudioUris = emptyList(),
+                                selectedAudioCount = 0
+                            )
+                        }
+                        fetchPlaylists()
+                        if (urisToUpload.isNotEmpty()) {
+                            onSuccessUpload?.invoke(playlist.id, urisToUpload)
+                        }
+                    }
+                    is Resource.Error -> {
+                        _uiState.update { it.copy(isCreating = false, errorMessage = result.message) }
+                    }
+                    Resource.Loading -> {}
                 }
-                Resource.Loading -> {}
             }
         }
     }

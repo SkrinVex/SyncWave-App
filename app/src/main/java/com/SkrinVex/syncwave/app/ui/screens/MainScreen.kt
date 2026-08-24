@@ -71,6 +71,13 @@ fun MainScreen(
     Scaffold(
         bottomBar = {
             Column(modifier = Modifier.fillMaxWidth().background(StudioBg)) {
+                // Upload Progress Drawer (floating widget)
+                com.SkrinVex.syncwave.app.ui.components.UploadProgressDrawer(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 6.dp)
+                )
+
                 // Mini Player Bar
                 if (playerState.currentTrack != null) {
                     val coverUrl = container.trackRepository.getCoverUrl(playerState.currentTrack!!.id, token ?: "")
@@ -195,6 +202,7 @@ fun MainScreen(
                             container.getServerUrlUseCase,
                             container.saveServerUrlUseCase,
                             container.logoutUseCase,
+                            container.settingsRepository,
                             container.sessionDataStore
                         )
                     )

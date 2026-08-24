@@ -13,6 +13,9 @@ data class SystemSettings(
     val hasCookies: Boolean = false,
     val cookiesValid: Boolean = false,
     val cookiesStatus: String = "missing",
+    val cookiesExpiresAt: String = "",
+    val cookiesError: String = "",
+    val cookiesUpdatedAt: String = "",
     val ytdlpVersion: String = "",
     val ffmpegVersion: String = "",
     val storageUsageBytes: Long = 0L,
@@ -26,6 +29,15 @@ data class SystemSettings(
     val hostDiskFreeBytes: Long = 0L,
     val isAdmin: Boolean = false
 ) {
+    val isCookiesExpired: Boolean
+        get() = cookiesStatus == "expired" || cookiesStatus == "invalid"
+
+    val isCookiesExpiringSoon: Boolean
+        get() = cookiesStatus == "expiring_soon"
+
+    val isCookiesValid: Boolean
+        get() = hasCookies && cookiesValid && cookiesStatus == "valid"
+
     val effectiveUserUsageBytes: Long
         get() = if (userStorageUsageBytes > 0) userStorageUsageBytes else storageUsageBytes
 

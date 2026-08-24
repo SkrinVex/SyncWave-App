@@ -2,6 +2,8 @@ package com.SkrinVex.syncwave.app.ui.screens.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -26,15 +29,19 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -53,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -85,6 +93,15 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showLogoutDialog by remember { mutableStateOf(false) }
+    var showDeleteCookiesDialog by remember { mutableStateOf(false) }
+
+    val cookiesFilePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.uploadCookiesFile(context, uri)
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
@@ -111,7 +128,7 @@ fun SettingsScreen(
                 color = Zinc100
             )
             Text(
-                text = "Параметры системы, хранилище и воспроизведение",
+                text = "Параметры системы, YouTube Cookies, хранилище и плеер",
                 fontSize = 12.sp,
                 color = Zinc400,
                 modifier = Modifier.padding(top = 2.dp)
@@ -208,6 +225,171 @@ fun SettingsScreen(
                             color = StudioAccent,
                             trackColor = StudioElevated
                         )
+                    }
+                }
+            }
+        }
+
+        // Section 2: YouTube Music Cookies & Google Auth Sync Card
+        StudioCard(
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = StudioSurface,
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VpnKey,
+                            contentDescription = null,
+                            tint = if (uiState.settings.isCookiesValid) StudioEmerald else StudioAccent,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "YouTube Music Cookies",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Zinc100
+                        )
+                    }
+
+                    // Status Badge
+                    val (badgeText, badgeBg, badgeTextColor) = when (uiState.settings.cookiesStatus) {
+                        "valid" -> Triple("АКТИВНЫ", StudioEmerald.copy(alpha = 0.15f), StudioEmerald)
+                        "expiring_soon" -> Triple("ИСТЕКАЮТ", StudioAccent.copy(alpha = 0.2f), StudioAccent)
+                        "expired" -> Triple("ИСТЕКЛИ", StudioRed.copy(alpha = 0.2f), StudioRed)
+                        "invalid" -> Triple("НЕВАЛИДНЫ", StudioRed.copy(alpha = 0.2f), StudioRed)
+                        else -> Triple("ОТСУТСТВУЮТ", StudioElevated, Zinc400)
+                    }
+
+                    StudioBadge(
+                        text = badgeText,
+                        backgroundColor = badgeBg,
+                        textColor = badgeTextColor
+                    )
+                }
+
+                // Description
+                val desc = when {
+                    uiState.settings.isCookiesValid -> "Куки авторизации активны. Синхронизация закрытых плейлистов и треков Liked Music работает штатно."
+                    uiState.settings.isCookiesExpiringSoon -> "Срок действия cookies YouTube подходит к концу. Рекомендуется обновить их через WebView или загрузить свежий файл."
+                    uiState.settings.isCookiesExpired -> "Сессия YouTube истекла. YouTube заблокировал доступ к трекам. Выполните вход через Google WebView для восстановления синхронизации."
+                    else -> "Для синхронизации треков из закрытых плейлистов и Liked Music (LM) выполните вход в аккаунт Google или загрузите cookies.txt."
+                }
+
+                Text(
+                    text = desc,
+                    fontSize = 12.sp,
+                    color = Zinc300,
+                    lineHeight = 16.sp
+                )
+
+                // Detailed Expiration / Error Banner if any
+                if (uiState.settings.cookiesExpiresAt.isNotBlank() || uiState.settings.cookiesError.isNotBlank()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(StudioElevated)
+                            .border(1.dp, StudioBorder, RoundedCornerShape(10.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (uiState.settings.cookiesExpiresAt.isNotBlank()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Истекают:", fontSize = 11.sp, color = Zinc400)
+                                Text(
+                                    text = uiState.settings.cookiesExpiresAt.take(19).replace("T", " "),
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Zinc300
+                                )
+                            }
+                        }
+                        if (uiState.settings.cookiesError.isNotBlank()) {
+                            Text(
+                                text = uiState.settings.cookiesError,
+                                fontSize = 11.sp,
+                                color = StudioRed
+                            )
+                        }
+                    }
+                }
+
+                // Cookies Operation Feedback Message
+                AnimatedVisibility(visible = !uiState.cookiesOperationMessage.isNullOrBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(StudioElevated)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = StudioEmerald,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = uiState.cookiesOperationMessage ?: "",
+                            fontSize = 11.sp,
+                            color = Zinc300
+                        )
+                    }
+                }
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Google WebView Login Button (Primary Action)
+                    StudioButton(
+                        text = "Войти через Google",
+                        onClick = { viewModel.openGoogleAuthModal() },
+                        backgroundColor = StudioAccent,
+                        textColor = Zinc100,
+                        icon = Icons.Default.Language,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    // Upload cookies.txt
+                    StudioButton(
+                        text = "Файл cookies.txt",
+                        onClick = { cookiesFilePicker.launch("text/*") },
+                        backgroundColor = StudioElevated,
+                        textColor = Zinc300,
+                        icon = Icons.Default.UploadFile,
+                        isLoading = uiState.isUploadingCookies,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (uiState.settings.hasCookies) {
+                        IconButton(
+                            onClick = { showDeleteCookiesDialog = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Удалить cookies",
+                                tint = StudioRed,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -568,6 +750,42 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.closeEditServerUrlModal() }) {
+                    Text("Отмена", color = Zinc400)
+                }
+            }
+        )
+    }
+
+    // Google Auth WebView Modal Dialog
+    if (uiState.isGoogleAuthModalOpen) {
+        GoogleAuthWebViewModal(
+            onDismiss = { viewModel.closeGoogleAuthModal() },
+            onCookiesSynced = { viewModel.refreshSettings() }
+        )
+    }
+
+    // Delete Cookies Confirmation Dialog
+    if (showDeleteCookiesDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteCookiesDialog = false },
+            containerColor = StudioSurface,
+            shape = RoundedCornerShape(18.dp),
+            title = {
+                Text("Удаление YouTube Cookies", color = Zinc100, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("Вы действительно хотите удалить cookies авторизации? Синхронизация закрытых плейлистов и треков станет недоступна до повторного входа.", color = Zinc400, fontSize = 13.sp)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteCookiesDialog = false
+                    viewModel.deleteCookies()
+                }) {
+                    Text("Удалить", color = StudioRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteCookiesDialog = false }) {
                     Text("Отмена", color = Zinc400)
                 }
             }

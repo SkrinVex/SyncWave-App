@@ -1,10 +1,13 @@
 package com.SkrinVex.syncwave.app.ui.screens.settings
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.SkrinVex.syncwave.app.data.local.SessionDataStore
 import com.SkrinVex.syncwave.app.domain.model.Resource
+import com.SkrinVex.syncwave.app.domain.repository.SettingsRepository
 import com.SkrinVex.syncwave.app.domain.usecase.auth.GetCurrentUserUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.GetServerUrlUseCase
 import com.SkrinVex.syncwave.app.domain.usecase.auth.LogoutUseCase
@@ -34,6 +37,7 @@ class SettingsViewModel(
     private val getServerUrlUseCase: GetServerUrlUseCase,
     private val saveServerUrlUseCase: SaveServerUrlUseCase,
     private val logoutUseCase: LogoutUseCase,
+    private val settingsRepository: SettingsRepository,
     private val sessionDataStore: SessionDataStore
 ) : ViewModel() {
 
@@ -88,6 +92,91 @@ class SettingsViewModel(
             }
 
             _uiState.update { it.copy(isLoading = false) }
+        }
+    }
+
+    fun refreshSettings() {
+        viewModelScope.launch {
+            when (val settingsResult = getSettingsUseCase()) {
+                is Resource.Success -> {
+                    _uiState.update { it.copy(settings = settingsResult.data) }
+                }
+                is Resource.Error -> {}
+                Resource.Loading -> {}
+            }
+        }
+    }
+
+    fun openGoogleAuthModal() {
+        _uiState.update { it.copy(isGoogleAuthModalOpen = true) }
+    }
+
+    fun closeGoogleAuthModal() {
+        _uiState.update { it.copy(isGoogleAuthModalOpen = false) }
+    }
+
+    fun uploadCookiesFile(context: Context, uri: Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingCookies = true, cookiesOperationMessage = null) }
+            try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null && bytes.isNotEmpty()) {
+                    when (val res = settingsRepository.uploadCookies(bytes)) {
+                        is Resource.Success -> {
+                            _uiState.update {
+                                it.copy(
+                                    isUploadingCookies = false,
+                                    cookiesOperationMessage = "Файл cookies.txt успешно загружен и применен!"
+                                )
+                            }
+                            refreshSettings()
+                        }
+                        is Resource.Error -> {
+                            _uiState.update {
+                                it.copy(
+                                    isUploadingCookies = false,
+                                    cookiesOperationMessage = "Ошибка: ${res.message}"
+                                )
+                            }
+                        }
+                        is Resource.Loading -> {}
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(isUploadingCookies = false, cookiesOperationMessage = "Файл пуст или недоступен")
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(isUploadingCookies = false, cookiesOperationMessage = "Ошибка чтения файла: ${e.localizedMessage}")
+                }
+            }
+        }
+    }
+
+    fun deleteCookies() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingCookies = true, cookiesOperationMessage = null) }
+            when (val res = settingsRepository.deleteCookies()) {
+                is Resource.Success -> {
+                    _uiState.update {
+                        it.copy(
+                            isUploadingCookies = false,
+                            cookiesOperationMessage = "Cookies успешно удалены с сервера"
+                        )
+                    }
+                    refreshSettings()
+                }
+                is Resource.Error -> {
+                    _uiState.update {
+                        it.copy(
+                            isUploadingCookies = false,
+                            cookiesOperationMessage = "Ошибка: ${res.message}"
+                        )
+                    }
+                }
+                is Resource.Loading -> {}
+            }
         }
     }
 
@@ -180,6 +269,7 @@ class SettingsViewModel(
         private val getServerUrlUseCase: GetServerUrlUseCase,
         private val saveServerUrlUseCase: SaveServerUrlUseCase,
         private val logoutUseCase: LogoutUseCase,
+        private val settingsRepository: SettingsRepository,
         private val sessionDataStore: SessionDataStore
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -191,8 +281,10 @@ class SettingsViewModel(
                 getServerUrlUseCase,
                 saveServerUrlUseCase,
                 logoutUseCase,
+                settingsRepository,
                 sessionDataStore
             ) as T
         }
     }
 }
+

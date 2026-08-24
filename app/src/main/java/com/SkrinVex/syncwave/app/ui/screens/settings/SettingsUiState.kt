@@ -15,5 +15,8 @@ data class SettingsUiState(
     val connectionTestResult: String? = null,
     val isEditServerUrlModalOpen: Boolean = false,
     val newServerUrl: String = "",
+    val isGoogleAuthModalOpen: Boolean = false,
+    val isUploadingCookies: Boolean = false,
+    val cookiesOperationMessage: String? = null,
     val errorMessage: String? = null
 )

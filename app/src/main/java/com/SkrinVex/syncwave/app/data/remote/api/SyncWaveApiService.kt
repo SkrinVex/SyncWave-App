@@ -108,4 +108,27 @@ interface SyncWaveApiService {
     // Settings
     @GET("/api/v1/settings")
     suspend fun getSettings(): Response<SystemSettingsDto>
+
+    @POST("/api/v1/settings/cookies")
+    suspend fun uploadCookies(@retrofit2.http.Body body: okhttp3.RequestBody): Response<Map<String, Any>>
+
+    @retrofit2.http.Multipart
+    @POST("/api/v1/settings/cookies")
+    suspend fun uploadCookiesMultipart(
+        @retrofit2.http.Part file: okhttp3.MultipartBody.Part
+    ): Response<Map<String, Any>>
+
+    @DELETE("/api/v1/settings/cookies")
+    suspend fun deleteCookies(): Response<Unit>
+
+    @POST("/api/v1/settings/test-proxy")
+    suspend fun testProxy(@retrofit2.http.Body body: Map<String, String>): Response<Map<String, Any>>
+
+    // Upload Tracks
+    @retrofit2.http.Multipart
+    @POST("/api/v1/tracks/upload")
+    suspend fun uploadTracks(
+        @retrofit2.http.Part files: List<okhttp3.MultipartBody.Part>,
+        @retrofit2.http.Part("playlist_id") playlistId: okhttp3.RequestBody? = null
+    ): Response<com.SkrinVex.syncwave.app.data.remote.dto.UploadResultDto>
 }

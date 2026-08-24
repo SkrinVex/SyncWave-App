@@ -1,5 +1,7 @@
 package com.SkrinVex.syncwave.app.ui.screens.playlists
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,15 +17,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -40,13 +47,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.SkrinVex.syncwave.app.SyncWaveApplication
 import com.SkrinVex.syncwave.app.domain.model.Playlist
 import com.SkrinVex.syncwave.app.ui.components.StudioBadge
 import com.SkrinVex.syncwave.app.ui.components.StudioButton
@@ -71,6 +82,41 @@ fun PlaylistsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var playlistToDelete by remember { mutableStateOf<Playlist?>(null) }
 
+    val context = LocalContext.current
+    val uploadManager = SyncWaveApplication.instance.container.uploadManager
+    var targetUploadPlaylistId by remember { mutableStateOf("") }
+
+    val audioMimeTypes = arrayOf(
+        "audio/*",
+        "application/ogg",
+        "audio/mpeg",
+        "audio/mp4",
+        "audio/flac",
+        "audio/wav",
+        "audio/aac",
+        "audio/x-m4a",
+        "audio/opus",
+        "audio/x-ms-wma"
+    )
+
+    // Direct File Picker for Header / Playlist card
+    val directFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            uploadManager.enqueueUploads(context, uris, targetUploadPlaylistId)
+        }
+    }
+
+    // Modal Audio Picker for Manual Playlist Creation
+    val modalFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            viewModel.setSelectedAudioFiles(uris)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -83,7 +129,7 @@ fun PlaylistsScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                 Text(
                     text = "Плейлисты",
                     fontSize = 22.sp,
@@ -91,35 +137,74 @@ fun PlaylistsScreen(
                     color = Zinc100
                 )
                 Text(
-                    text = "Автосинхронизация с YouTube Music",
+                    text = "Синхронизация и аудиотека",
                     fontSize = 12.sp,
                     color = Zinc400,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
 
-            // Add Playlist Button
+            // Action Buttons (Upload & Add Playlist)
             Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(StudioAccent)
-                    .clickable { viewModel.openAddModal() }
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    tint = Zinc100,
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(
-                    text = "Добавить",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Zinc100
-                )
+                // Upload Tracks Button (Emerald)
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(StudioEmerald)
+                        .clickable {
+                            targetUploadPlaylistId = ""
+                            directFilePickerLauncher.launch(audioMimeTypes)
+                        }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FileUpload,
+                        contentDescription = "Загрузить",
+                        tint = Zinc100,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = "Загрузить",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Zinc100,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+
+                // Add Playlist Button (Accent)
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(StudioAccent)
+                        .clickable { viewModel.openAddModal() }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        tint = Zinc100,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Text(
+                        text = "Добавить",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Zinc100,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
             }
         }
 
@@ -144,7 +229,7 @@ fun PlaylistsScreen(
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Box(
                         modifier = Modifier
@@ -155,7 +240,7 @@ fun PlaylistsScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.QueueMusic,
+                            imageVector = Icons.AutoMirrored.Filled.QueueMusic,
                             contentDescription = null,
                             tint = Zinc500,
                             modifier = Modifier.size(28.dp)
@@ -168,11 +253,38 @@ fun PlaylistsScreen(
                         color = Zinc300
                     )
                     Text(
-                        text = "Добавьте плейлист или 'Понравившиеся (LM)' для автосинхронизации",
+                        text = "Вы можете добавить плейлист YouTube Music или создать ручной плейлист со своими треками",
                         fontSize = 12.sp,
                         color = Zinc500,
-                        textAlign = TextAlign.Center
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 24.dp)
                     )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.padding(top = 6.dp)
+                    ) {
+                        StudioButton(
+                            text = "Загрузить треки",
+                            onClick = {
+                                targetUploadPlaylistId = ""
+                                directFilePickerLauncher.launch(audioMimeTypes)
+                            },
+                            backgroundColor = StudioEmerald,
+                            textColor = Zinc100,
+                            icon = Icons.Default.FileUpload,
+                            modifier = Modifier.width(150.dp)
+                        )
+
+                        StudioButton(
+                            text = "Создать плейлист",
+                            onClick = { viewModel.openAddModal() },
+                            backgroundColor = StudioAccent,
+                            textColor = Zinc100,
+                            icon = Icons.Default.Add,
+                            modifier = Modifier.width(160.dp)
+                        )
+                    }
                 }
             }
         } else {
@@ -186,14 +298,18 @@ fun PlaylistsScreen(
                         playlist = playlist,
                         isSyncing = uiState.syncingPlaylistId == playlist.id,
                         onSync = { viewModel.syncPlaylist(playlist.id) },
-                        onDelete = { playlistToDelete = playlist }
+                        onDelete = { playlistToDelete = playlist },
+                        onUploadToPlaylist = {
+                            targetUploadPlaylistId = playlist.id
+                            directFilePickerLauncher.launch(audioMimeTypes)
+                        }
                     )
                 }
             }
         }
     }
 
-    // Add Playlist Modal Dialog
+    // Add Playlist Modal Dialog (Dual Mode: YouTube Sync vs Manual Upload)
     if (uiState.isAddModalOpen) {
         AlertDialog(
             onDismissRequest = { viewModel.closeAddModal() },
@@ -212,85 +328,338 @@ fun PlaylistsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Quick Preset Button: Liked Music (LM)
+                    // Segmented Type Selector (YouTube Sync vs Manual)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(StudioElevated)
-                            .border(1.dp, StudioBorder, RoundedCornerShape(8.dp))
-                            .clickable { viewModel.setPresetLikedMusic() }
-                            .padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = null,
-                            tint = StudioRed,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "Пресет: Понравившиеся (LM)",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Zinc100
-                            )
-                            Text(
-                                text = "Синхронизация Liked Music из YouTube Music",
-                                fontSize = 10.sp,
-                                color = Zinc400
-                            )
+                        // YouTube Sync Option
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (uiState.creationType == PlaylistCreationType.YOUTUBE_SYNC) StudioAccent else StudioElevated)
+                                .clickable { viewModel.setCreationType(PlaylistCreationType.YOUTUBE_SYNC) }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Sync,
+                                    contentDescription = null,
+                                    tint = if (uiState.creationType == PlaylistCreationType.YOUTUBE_SYNC) Zinc100 else Zinc400,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "YouTube Синхр.",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (uiState.creationType == PlaylistCreationType.YOUTUBE_SYNC) Zinc100 else Zinc400
+                                )
+                            }
+                        }
+
+                        // Manual Upload Option
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (uiState.creationType == PlaylistCreationType.MANUAL_UPLOAD) StudioEmerald else StudioElevated)
+                                .clickable { viewModel.setCreationType(PlaylistCreationType.MANUAL_UPLOAD) }
+                                .padding(vertical = 7.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = if (uiState.creationType == PlaylistCreationType.MANUAL_UPLOAD) Zinc100 else Zinc400,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Свои треки",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (uiState.creationType == PlaylistCreationType.MANUAL_UPLOAD) Zinc100 else Zinc400
+                                )
+                            }
                         }
                     }
 
-                    // Title
-                    StudioTextField(
-                        value = uiState.newTitle,
-                        onValueChange = { viewModel.onNewTitleChange(it) },
-                        label = "Название плейлиста",
-                        placeholder = "Понравившиеся или Мой Плейлист"
-                    )
+                    if (uiState.creationType == PlaylistCreationType.YOUTUBE_SYNC) {
+                        // MODE 1: YouTube Music Sync
 
-                    // URL or ID
-                    StudioTextField(
-                        value = uiState.newUrlOrId,
-                        onValueChange = { viewModel.onNewUrlOrIdChange(it) },
-                        label = "ID или ссылка на плейлист",
-                        placeholder = "LM или PLxxxx..."
-                    )
+                        // Quick Preset Button: Liked Music (LM)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(StudioElevated)
+                                .border(1.dp, StudioBorder, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Favorite,
+                                    contentDescription = null,
+                                    tint = StudioRed,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = "Пресет: Понравившиеся (LM)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Zinc100
+                                    )
+                                    Text(
+                                        text = "Liked Music из YouTube Music",
+                                        fontSize = 10.sp,
+                                        color = Zinc400
+                                    )
+                                }
+                            }
 
-                    // Auto Sync Switch
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "Автосинхронизация",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Zinc100
-                            )
-                            Text(
-                                text = "Периодическая проверка новых треков",
-                                fontSize = 10.sp,
-                                color = Zinc500
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(StudioAccent.copy(alpha = 0.2f))
+                                    .clickable { viewModel.setPresetLikedMusic() }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "Применить",
+                                    fontSize = 11.sp,
+                                    color = StudioAccent,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
 
-                        Switch(
-                            checked = uiState.newAutoSync,
-                            onCheckedChange = { viewModel.onNewAutoSyncChange(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Zinc100,
-                                checkedTrackColor = StudioAccent,
-                                uncheckedThumbColor = Zinc500,
-                                uncheckedTrackColor = StudioElevated
-                            )
+                        // URL or ID
+                        StudioTextField(
+                            value = uiState.newUrlOrId,
+                            onValueChange = { viewModel.onNewUrlOrIdChange(it) },
+                            label = "URL или ID плейлиста *",
+                            placeholder = "LM или https://music.youtube.com/playlist?list=..."
                         )
+
+                        // Title (Optional)
+                        StudioTextField(
+                            value = uiState.newTitle,
+                            onValueChange = { viewModel.onNewTitleChange(it) },
+                            label = "Название (опционально)",
+                            placeholder = "Автоматически подтянется из YouTube"
+                        )
+
+                        // Auto Sync Switch + Interval Selection (Web Parity)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(StudioElevated)
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                    Text(
+                                        text = "Автосинхронизация",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Zinc100
+                                    )
+                                    Text(
+                                        text = "Периодическая проверка новых треков",
+                                        fontSize = 10.sp,
+                                        color = Zinc400
+                                    )
+                                }
+
+                                Switch(
+                                    checked = uiState.newAutoSync,
+                                    onCheckedChange = { viewModel.onNewAutoSyncChange(it) },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Zinc100,
+                                        checkedTrackColor = StudioAccent,
+                                        uncheckedThumbColor = Zinc500,
+                                        uncheckedTrackColor = StudioSurface
+                                    )
+                                )
+                            }
+
+                            // Interval Preset Chips
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .alpha(if (uiState.newAutoSync) 1f else 0.35f)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Schedule,
+                                        contentDescription = null,
+                                        tint = Zinc400,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = "Интервал проверки:",
+                                        fontSize = 11.sp,
+                                        color = Zinc300,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+
+                                val intervals = listOf(
+                                    15 to "15м",
+                                    30 to "30м",
+                                    60 to "1ч",
+                                    360 to "6ч",
+                                    720 to "12ч",
+                                    1440 to "24ч"
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    intervals.forEach { (mins, label) ->
+                                        val isSelected = uiState.newIntervalMinutes == mins
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(if (isSelected && uiState.newAutoSync) StudioAccent else StudioSurface)
+                                                .clickable(enabled = uiState.newAutoSync) {
+                                                    viewModel.onNewIntervalMinutesChange(mins)
+                                                }
+                                                .padding(vertical = 5.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 10.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected && uiState.newAutoSync) Zinc100 else Zinc400
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // MODE 2: Manual Playlist Upload
+
+                        StudioTextField(
+                            value = uiState.newTitle,
+                            onValueChange = { viewModel.onNewTitleChange(it) },
+                            label = "Название плейлиста *",
+                            placeholder = "Например: Моя коллекция, Альбом 2026..."
+                        )
+
+                        // File Selector Card
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(StudioElevated)
+                                .border(1.dp, StudioBorder, RoundedCornerShape(10.dp))
+                                .padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Audiotrack,
+                                        contentDescription = null,
+                                        tint = StudioEmerald,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Аудиофайлы для плейлиста",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Zinc100
+                                    )
+                                }
+
+                                if (uiState.selectedAudioCount > 0) {
+                                    StudioBadge(
+                                        text = "${uiState.selectedAudioCount} выбрано",
+                                        backgroundColor = StudioEmerald.copy(alpha = 0.2f),
+                                        textColor = StudioEmerald
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = if (uiState.selectedAudioCount > 0) {
+                                    "Выбрано ${uiState.selectedAudioCount} аудиофайлов. Они начнут загружаться сразу после создания."
+                                } else {
+                                    "Вы можете выбрать файлы прямо сейчас или загрузить их позже в созданный плейлист."
+                                },
+                                fontSize = 11.sp,
+                                color = Zinc400,
+                                lineHeight = 15.sp
+                            )
+
+                            // Pick files button
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(StudioEmerald.copy(alpha = 0.15f))
+                                    .border(1.dp, StudioEmerald.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                    .clickable { modalFilePickerLauncher.launch(audioMimeTypes) }
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FileUpload,
+                                    contentDescription = null,
+                                    tint = StudioEmerald,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (uiState.selectedAudioCount > 0) "Изменить выбор файлов" else "Выбрать аудиофайлы",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = StudioEmerald
+                                )
+                            }
+                        }
                     }
 
                     if (!uiState.errorMessage.isNullOrBlank()) {
@@ -303,11 +672,22 @@ fun PlaylistsScreen(
                 }
             },
             confirmButton = {
+                val buttonText = if (uiState.creationType == PlaylistCreationType.YOUTUBE_SYNC) {
+                    "Добавить"
+                } else {
+                    if (uiState.selectedAudioCount > 0) "Создать и загрузить" else "Создать"
+                }
+
                 StudioButton(
-                    text = "Добавить",
-                    onClick = { viewModel.createPlaylist() },
+                    text = buttonText,
+                    onClick = {
+                        viewModel.createPlaylist { playlistId, uris ->
+                            uploadManager.enqueueUploads(context, uris, playlistId)
+                        }
+                    },
+                    backgroundColor = if (uiState.creationType == PlaylistCreationType.YOUTUBE_SYNC) StudioAccent else StudioEmerald,
                     isLoading = uiState.isCreating,
-                    modifier = Modifier.width(110.dp)
+                    modifier = Modifier.wrapContentWidth()
                 )
             },
             dismissButton = {
@@ -363,8 +743,11 @@ fun PlaylistItemCard(
     playlist: Playlist,
     isSyncing: Boolean,
     onSync: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onUploadToPlaylist: () -> Unit
 ) {
+    val isManualPlaylist = playlist.youtubeId.equals("MANUAL", ignoreCase = true) || playlist.youtubeId.startsWith("manual:")
+
     StudioCard(
         modifier = Modifier.fillMaxWidth(),
         backgroundColor = StudioSurface,
@@ -375,7 +758,7 @@ fun PlaylistItemCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -384,12 +767,14 @@ fun PlaylistItemCard(
                         text = playlist.title,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Zinc100
+                        color = Zinc100,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     StudioBadge(
-                        text = playlist.youtubeId,
-                        backgroundColor = StudioElevated,
-                        textColor = StudioAccent
+                        text = if (isManualPlaylist) "РУЧНОЙ" else playlist.youtubeId,
+                        backgroundColor = if (isManualPlaylist) StudioEmerald.copy(alpha = 0.15f) else StudioElevated,
+                        textColor = if (isManualPlaylist) StudioEmerald else StudioAccent
                     )
                 }
 
@@ -404,7 +789,7 @@ fun PlaylistItemCard(
                         fontFamily = FontFamily.Monospace,
                         color = Zinc400
                     )
-                    if (playlist.autoSync) {
+                    if (playlist.autoSync && !isManualPlaylist) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -433,26 +818,38 @@ fun PlaylistItemCard(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Sync Button
-                IconButton(onClick = onSync, enabled = !isSyncing) {
-                    if (isSyncing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = StudioAccent,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = "Синхронизировать",
-                            tint = StudioAccent,
-                            modifier = Modifier.size(20.dp)
-                        )
+                // Upload to Playlist Button
+                IconButton(onClick = onUploadToPlaylist, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.FileUpload,
+                        contentDescription = "Загрузить треки в этот плейлист",
+                        tint = StudioEmerald,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Sync Button (Only for YouTube Playlists)
+                if (!isManualPlaylist) {
+                    IconButton(onClick = onSync, enabled = !isSyncing, modifier = Modifier.size(32.dp)) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = StudioAccent,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "Синхронизировать",
+                                tint = StudioAccent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
                 }
 
                 // Delete Button
-                IconButton(onClick = onDelete) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Удалить",
