@@ -1,0 +1,26 @@
+package com.SkrinVex.syncwave.app.ui.screens.library
+
+import com.SkrinVex.syncwave.app.domain.model.Playlist
+import com.SkrinVex.syncwave.app.domain.model.Track
+import com.SkrinVex.syncwave.app.domain.model.TrackStats
+
+enum class ViewMode {
+    LIST,
+    GRID
+}
+
+data class LibraryUiState(
+    val tracks: List<Track> = emptyList(),
+    val totalTracks: Int = 0,
+    val stats: TrackStats = TrackStats(),
+    val playlists: List<Playlist> = emptyList(),
+    val selectedPlaylistId: String = "",
+    val searchQuery: String = "",
+    val sortBy: String = "created_at",
+    val sortOrder: String = "desc",
+    val viewMode: ViewMode = ViewMode.LIST,
+    val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
+    val errorMessage: String? = null,
+    val trackToDelete: Track? = null
+)
