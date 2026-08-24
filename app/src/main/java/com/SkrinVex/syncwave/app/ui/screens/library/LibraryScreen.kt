@@ -49,11 +49,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,6 +79,7 @@ import com.SkrinVex.syncwave.app.ui.theme.Zinc300
 import com.SkrinVex.syncwave.app.ui.theme.Zinc400
 import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 import com.SkrinVex.syncwave.app.ui.theme.Zinc950
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @Composable
 fun LibraryScreen(
@@ -86,7 +87,8 @@ fun LibraryScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val playerState by viewModel.playerManager.playerState.collectAsStateWithLifecycle()
+    val currentTrackId by viewModel.playerManager.currentTrackIdFlow.collectAsStateWithLifecycle(initialValue = null)
+    val isPlaying by viewModel.playerManager.isPlayingFlow.collectAsStateWithLifecycle(initialValue = false)
     val token by SyncWaveApplication.instance.container.sessionDataStore.tokenFlow.collectAsStateWithLifecycle(initialValue = "")
 
     var showSortMenu by remember { mutableStateOf(false) }
@@ -94,30 +96,36 @@ fun LibraryScreen(
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
 
-    // Infinite scroll detection for List View
-    val shouldLoadMoreList by remember {
-        derivedStateOf {
-            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisible >= uiState.tracks.size - 6 && uiState.hasMore && !uiState.isLoadingMore
+    // Smooth Infinite scroll detection for List View using snapshotFlow
+    LaunchedEffect(listState, uiState.hasMore, uiState.isLoadingMore) {
+        snapshotFlow {
+            val layoutInfo = listState.layoutInfo
+            val total = layoutInfo.totalItemsCount
+            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            total > 0 && lastVisible >= total - 6
         }
-    }
-    LaunchedEffect(shouldLoadMoreList) {
-        if (shouldLoadMoreList) {
-            viewModel.loadNextPage()
-        }
+            .distinctUntilChanged()
+            .collect { shouldLoad ->
+                if (shouldLoad && uiState.hasMore && !uiState.isLoadingMore) {
+                    viewModel.loadNextPage()
+                }
+            }
     }
 
-    // Infinite scroll detection for Grid View
-    val shouldLoadMoreGrid by remember {
-        derivedStateOf {
-            val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisible >= uiState.tracks.size - 6 && uiState.hasMore && !uiState.isLoadingMore
+    // Smooth Infinite scroll detection for Grid View using snapshotFlow
+    LaunchedEffect(gridState, uiState.hasMore, uiState.isLoadingMore) {
+        snapshotFlow {
+            val layoutInfo = gridState.layoutInfo
+            val total = layoutInfo.totalItemsCount
+            val lastVisible = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            total > 0 && lastVisible >= total - 6
         }
-    }
-    LaunchedEffect(shouldLoadMoreGrid) {
-        if (shouldLoadMoreGrid) {
-            viewModel.loadNextPage()
-        }
+            .distinctUntilChanged()
+            .collect { shouldLoad ->
+                if (shouldLoad && uiState.hasMore && !uiState.isLoadingMore) {
+                    viewModel.loadNextPage()
+                }
+            }
     }
 
     Column(
@@ -383,7 +391,7 @@ fun LibraryScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Content Area (Loading with Logo, Empty, List or Grid with Infinite Scroll)
+        // Content Area (Loading with Logo, Empty, List or Grid with Optimized Scroll)
         if (uiState.isLoading && uiState.tracks.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -457,14 +465,18 @@ fun LibraryScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                itemsIndexed(uiState.tracks, key = { _, track -> track.id }) { index, track ->
-                    val isCurrent = playerState.currentTrack?.id == track.id
+                itemsIndexed(
+                    items = uiState.tracks,
+                    key = { _, track -> track.id },
+                    contentType = { _, _ -> "track_card" }
+                ) { index, track ->
+                    val isCurrent = currentTrackId == track.id
                     val coverUrl = SyncWaveApplication.instance.container.trackRepository.getCoverUrl(track.id, token ?: "")
 
                     TrackCardItem(
                         track = track,
                         coverUrl = coverUrl,
-                        isPlaying = playerState.isPlaying,
+                        isPlaying = isPlaying,
                         isCurrentTrack = isCurrent,
                         onClick = { viewModel.playTrack(track, index) }
                     )
@@ -494,14 +506,18 @@ fun LibraryScreen(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                itemsIndexed(uiState.tracks, key = { _, track -> track.id }) { index, track ->
-                    val isCurrent = playerState.currentTrack?.id == track.id
+                itemsIndexed(
+                    items = uiState.tracks,
+                    key = { _, track -> track.id },
+                    contentType = { _, _ -> "track_row" }
+                ) { index, track ->
+                    val isCurrent = currentTrackId == track.id
                     val coverUrl = SyncWaveApplication.instance.container.trackRepository.getCoverUrl(track.id, token ?: "")
 
                     TrackRowItem(
                         track = track,
                         coverUrl = coverUrl,
-                        isPlaying = playerState.isPlaying,
+                        isPlaying = isPlaying,
                         isCurrentTrack = isCurrent,
                         index = index + 1,
                         onClick = { viewModel.playTrack(track, index) },

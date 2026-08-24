@@ -23,7 +23,7 @@ class SyncWaveApplication : Application(), ImageLoaderFactory {
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.25)
+                    .maxSizePercent(0.30)
                     .build()
             }
             .diskCache {
@@ -34,6 +34,8 @@ class SyncWaveApplication : Application(), ImageLoaderFactory {
             }
             .diskCachePolicy(CachePolicy.ENABLED)
             .memoryCachePolicy(CachePolicy.ENABLED)
+            .respectCacheHeaders(false)
+            .allowHardware(true)
             .crossfade(true)
             .build()
     }

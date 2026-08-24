@@ -33,10 +33,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -58,6 +61,14 @@ class AudioPlayerManager(
 
     private val _playerState = MutableStateFlow(PlayerState())
     val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
+
+    val currentTrackIdFlow: Flow<String?> = _playerState
+        .map { it.currentTrack?.id }
+        .distinctUntilChanged()
+
+    val isPlayingFlow: Flow<Boolean> = _playerState
+        .map { it.isPlaying }
+        .distinctUntilChanged()
 
     init {
         createNotificationChannel()

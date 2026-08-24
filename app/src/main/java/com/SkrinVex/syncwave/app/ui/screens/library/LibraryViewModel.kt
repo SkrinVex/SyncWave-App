@@ -35,7 +35,7 @@ class LibraryViewModel(
     private var isFetchingPage = false
 
     companion object {
-        const val PAGE_SIZE = 50
+        const val PAGE_SIZE = 300
     }
 
     init {
@@ -135,7 +135,7 @@ class LibraryViewModel(
         _uiState.update { it.copy(searchQuery = query) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            delay(350L) // Debounce
+            delay(300L)
             fetchTracks(page = 1, isInitial = false)
         }
     }

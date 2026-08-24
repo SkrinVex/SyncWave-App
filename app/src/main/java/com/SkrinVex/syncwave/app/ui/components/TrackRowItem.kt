@@ -32,12 +32,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.SkrinVex.syncwave.app.domain.model.Track
 import com.SkrinVex.syncwave.app.ui.theme.StudioAccent
 import com.SkrinVex.syncwave.app.ui.theme.StudioBorder
@@ -61,6 +63,14 @@ fun TrackRowItem(
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val imageRequest = remember(coverUrl) {
+        ImageRequest.Builder(context)
+            .data(coverUrl)
+            .size(128, 128)
+            .crossfade(100)
+            .build()
+    }
 
     Row(
         modifier = modifier
@@ -108,7 +118,7 @@ fun TrackRowItem(
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
-                model = coverUrl,
+                model = imageRequest,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -206,29 +216,31 @@ fun TrackRowItem(
                     modifier = Modifier.size(16.dp)
                 )
             }
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false },
-                modifier = Modifier.background(StudioElevated)
-            ) {
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = null,
-                                tint = StudioRed,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Удалить с сервера", color = StudioRed, fontSize = 12.sp)
+            if (showMenu) {
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                    modifier = Modifier.background(StudioElevated)
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = StudioRed,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Удалить с сервера", color = StudioRed, fontSize = 12.sp)
+                            }
+                        },
+                        onClick = {
+                            showMenu = false
+                            onDelete()
                         }
-                    },
-                    onClick = {
-                        showMenu = false
-                        onDelete()
-                    }
-                )
+                    )
+                }
             }
         }
     }
