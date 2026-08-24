@@ -234,7 +234,9 @@ fun StudioBadge(
             color = textColor,
             fontSize = 10.sp,
             fontWeight = FontWeight.Medium,
-            fontFamily = if (isMono) FontFamily.Monospace else FontFamily.Default
+            fontFamily = if (isMono) FontFamily.Monospace else FontFamily.Default,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }

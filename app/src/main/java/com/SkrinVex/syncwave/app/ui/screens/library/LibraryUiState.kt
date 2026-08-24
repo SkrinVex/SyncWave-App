@@ -22,6 +22,8 @@ data class LibraryUiState(
     val sortBy: String = "created_at",
     val sortOrder: String = "desc",
     val viewMode: ViewMode = ViewMode.LIST,
+    val isOfflineMode: Boolean = false,
+    val showOnlyDownloaded: Boolean = false,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val trackToDelete: Track? = null,

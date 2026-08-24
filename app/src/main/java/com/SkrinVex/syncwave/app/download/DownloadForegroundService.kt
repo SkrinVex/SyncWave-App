@@ -158,7 +158,8 @@ class DownloadForegroundService : Service() {
 
                         val activeTask = tasks.firstOrNull { it.status == DownloadStatus.DOWNLOADING }
                         val contentText = if (activeTask != null) {
-                            "${activeTask.title} ($completed/$total)"
+                            val speedPart = if (activeTask.formattedSpeed.isNotBlank()) " • ${activeTask.formattedSpeed}" else ""
+                            "${activeTask.title} • ${activeTask.downloadedMbFormatted} (${activeTask.progress}%)$speedPart"
                         } else {
                             "Скачано $completed из $total ($progress%)"
                         }

@@ -13,6 +13,8 @@ data class SyncUiState(
     val isClearingLogs: Boolean = false,
     val isConfirmClearLogsOpen: Boolean = false,
     val isLocalDownloading: Boolean = false,
+    val isLastRunCancelled: Boolean = false,
+    val cancelledSavedCount: Int = 0,
     val localDownloadTasks: List<DownloadTask> = emptyList(),
     val activeLocalTask: DownloadTask? = null,
     val localOverallProgress: Int = 0,

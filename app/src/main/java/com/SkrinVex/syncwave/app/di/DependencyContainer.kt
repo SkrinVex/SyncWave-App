@@ -65,7 +65,7 @@ class DependencyContainer(val context: Context) {
 
     val loggingInterceptor: HttpLoggingInterceptor by lazy {
         HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = HttpLoggingInterceptor.Level.HEADERS
         }
     }
 
@@ -77,6 +77,16 @@ class DependencyContainer(val context: Context) {
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
+            .build()
+    }
+
+    val downloadOkHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(0, TimeUnit.SECONDS) // No read timeout for long audio streaming downloads
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
             .build()
     }
 
@@ -142,7 +152,7 @@ class DependencyContainer(val context: Context) {
             downloadStorage = downloadStorage,
             sessionDataStore = sessionDataStore,
             trackRepository = trackRepository,
-            okHttpClient = okHttpClient
+            okHttpClient = downloadOkHttpClient
         )
     }
 

@@ -155,6 +155,14 @@ class SessionDataStore(private val context: Context, private val gson: Gson = Gs
         return AuthSession(token = token, user = user, serverUrl = _cachedServerUrl)
     }
 
+    suspend fun getToken(): String? {
+        return try {
+            tokenFlow.first()
+        } catch (_: Exception) {
+            _cachedToken
+        }
+    }
+
     suspend fun getServerUrl(): String {
         return try {
             serverUrlFlow.first()

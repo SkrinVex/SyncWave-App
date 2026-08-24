@@ -98,6 +98,34 @@ class LibraryViewModel(
 
         viewModelScope.launch {
             val state = _uiState.value
+
+            if (state.showOnlyDownloaded) {
+                val localTracks = downloadManager.downloadedTracks.value
+                val filtered = if (state.searchQuery.isBlank()) {
+                    localTracks
+                } else {
+                    val q = state.searchQuery.trim().lowercase()
+                    localTracks.filter {
+                        it.title.lowercase().contains(q) ||
+                        it.artist.lowercase().contains(q) ||
+                        it.album.lowercase().contains(q)
+                    }
+                }
+                val domainTracks = filtered.map { it.toTrack() }
+                _uiState.update {
+                    it.copy(
+                        tracks = domainTracks,
+                        totalTracks = domainTracks.size,
+                        currentPage = 1,
+                        hasMore = false,
+                        isLoadingMore = false,
+                        errorMessage = null
+                    )
+                }
+                isFetchingPage = false
+                return@launch
+            }
+
             val result = getTracksUseCase(
                 query = state.searchQuery,
                 playlistId = state.selectedPlaylistId,
@@ -118,6 +146,7 @@ class LibraryViewModel(
                             totalTracks = result.data.total,
                             currentPage = page,
                             hasMore = hasMore,
+                            isOfflineMode = false,
                             isLoadingMore = false,
                             errorMessage = null
                         )
@@ -129,17 +158,49 @@ class LibraryViewModel(
                     }
                 }
                 is Resource.Error -> {
-                    _uiState.update {
-                        it.copy(
-                            errorMessage = result.message,
-                            isLoadingMore = false
-                        )
+                    val localTracks = downloadManager.downloadedTracks.value
+                    if (localTracks.isNotEmpty()) {
+                        val filtered = if (state.searchQuery.isBlank()) {
+                            localTracks
+                        } else {
+                            val q = state.searchQuery.trim().lowercase()
+                            localTracks.filter {
+                                it.title.lowercase().contains(q) ||
+                                it.artist.lowercase().contains(q) ||
+                                it.album.lowercase().contains(q)
+                            }
+                        }
+                        val domainTracks = filtered.map { it.toTrack() }
+                        _uiState.update {
+                            it.copy(
+                                tracks = domainTracks,
+                                totalTracks = domainTracks.size,
+                                currentPage = 1,
+                                hasMore = false,
+                                isOfflineMode = true,
+                                isLoadingMore = false,
+                                errorMessage = null
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                errorMessage = result.message,
+                                isOfflineMode = false,
+                                isLoadingMore = false
+                            )
+                        }
                     }
                 }
                 Resource.Loading -> {}
             }
             isFetchingPage = false
         }
+    }
+
+    fun toggleShowOnlyDownloaded() {
+        _uiState.update { it.copy(showOnlyDownloaded = !it.showOnlyDownloaded) }
+        fetchTracks(page = 1, isInitial = false)
     }
 
     fun loadNextPage() {

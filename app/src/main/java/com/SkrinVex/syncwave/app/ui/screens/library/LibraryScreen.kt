@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FileDownloadDone
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
@@ -82,6 +83,7 @@ import com.SkrinVex.syncwave.app.ui.theme.StudioAccent
 import com.SkrinVex.syncwave.app.ui.theme.StudioBg
 import com.SkrinVex.syncwave.app.ui.theme.StudioBorder
 import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
+import com.SkrinVex.syncwave.app.ui.theme.StudioEmerald
 import com.SkrinVex.syncwave.app.ui.theme.StudioRed
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
@@ -162,11 +164,50 @@ fun LibraryScreen(
                         color = Zinc100
                     )
                     Text(
-                        text = "Загружено треков: ${uiState.tracks.size} из ${uiState.totalTracks}",
+                        text = if (uiState.isOfflineMode) "Оффлайн: ${uiState.tracks.size} скачанных треков" else "Загружено треков: ${uiState.tracks.size} из ${uiState.totalTracks}",
                         fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = Zinc400,
+                        color = if (uiState.isOfflineMode) StudioEmerald else Zinc400,
                         modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
+            }
+
+            if (uiState.isOfflineMode) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(StudioEmerald.copy(alpha = 0.15f))
+                        .border(1.dp, StudioEmerald.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FileDownloadDone,
+                            contentDescription = null,
+                            tint = StudioEmerald,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Оффлайн-режим • Доступно ${uiState.tracks.size} скачанных треков",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = StudioEmerald
+                        )
+                    }
+                    Text(
+                        text = "БЕЗ СЕТИ",
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = StudioEmerald
                     )
                 }
             }
@@ -393,13 +434,16 @@ fun LibraryScreen(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val isAllSelected = uiState.selectedPlaylistId.isBlank()
+                val isAllSelected = uiState.selectedPlaylistId.isBlank() && !uiState.showOnlyDownloaded
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(16.dp))
                         .background(if (isAllSelected) Zinc100 else StudioElevated)
                         .border(1.dp, if (isAllSelected) Zinc100 else StudioBorder, RoundedCornerShape(16.dp))
-                        .clickable { viewModel.selectPlaylist("") }
+                        .clickable {
+                            if (uiState.showOnlyDownloaded) viewModel.toggleShowOnlyDownloaded()
+                            viewModel.selectPlaylist("")
+                        }
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
@@ -408,6 +452,34 @@ fun LibraryScreen(
                         fontWeight = FontWeight.Medium,
                         color = if (isAllSelected) Zinc950 else Zinc400
                     )
+                }
+
+                // Downloaded Only Chip
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (uiState.showOnlyDownloaded) StudioEmerald else StudioElevated)
+                        .border(1.dp, if (uiState.showOnlyDownloaded) StudioEmerald else StudioBorder, RoundedCornerShape(16.dp))
+                        .clickable { viewModel.toggleShowOnlyDownloaded() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FileDownloadDone,
+                            contentDescription = null,
+                            tint = if (uiState.showOnlyDownloaded) Zinc950 else StudioEmerald,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = "Скачанные (${uiState.downloadedTrackIds.size})",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (uiState.showOnlyDownloaded) Zinc950 else Zinc400
+                        )
+                    }
                 }
 
                 // Playlist Chips

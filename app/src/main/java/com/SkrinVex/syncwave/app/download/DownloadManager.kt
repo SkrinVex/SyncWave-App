@@ -26,7 +26,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 
 class DownloadManager(
@@ -44,6 +43,12 @@ class DownloadManager(
     private val _downloadedTracks = MutableStateFlow<List<DownloadedTrack>>(emptyList())
     val downloadedTracks: StateFlow<List<DownloadedTrack>> = _downloadedTracks.asStateFlow()
 
+    private val _isCancelled = MutableStateFlow(false)
+    val isCancelled: StateFlow<Boolean> = _isCancelled.asStateFlow()
+
+    private val _cancelledSavedCount = MutableStateFlow(0)
+    val cancelledSavedCount: StateFlow<Int> = _cancelledSavedCount.asStateFlow()
+
     val downloadedTrackIds: StateFlow<Set<String>> = _downloadedTracks
         .map { list -> list.map { it.id }.toSet() }
         .stateIn(scope, SharingStarted.Eagerly, emptySet())
@@ -51,10 +56,6 @@ class DownloadManager(
     val isDownloading: StateFlow<Boolean> = _tasks
         .map { list -> list.any { it.status == DownloadStatus.PENDING || it.status == DownloadStatus.DOWNLOADING } }
         .stateIn(scope, SharingStarted.Eagerly, false)
-
-    val activeTask: StateFlow<DownloadTask?> = _tasks
-        .map { list -> list.firstOrNull { it.status == DownloadStatus.DOWNLOADING } }
-        .stateIn(scope, SharingStarted.Eagerly, null)
 
     val overallProgress: StateFlow<Int> = _tasks
         .map { list ->
@@ -102,6 +103,12 @@ class DownloadManager(
             return
         }
 
+        val estimatedBytes = when {
+            track.fileSize > 1024L -> track.fileSize
+            track.duration > 0 -> (track.duration * (track.bitrate.takeIf { it > 0 } ?: 160) * 1000L) / 8L
+            else -> 0L
+        }
+
         val task = DownloadTask(
             trackId = track.id,
             title = track.title,
@@ -109,6 +116,7 @@ class DownloadManager(
             album = track.album,
             duration = track.duration,
             format = track.format,
+            totalBytes = estimatedBytes,
             progress = 0,
             status = DownloadStatus.PENDING
         )
@@ -134,6 +142,12 @@ class DownloadManager(
                 continue
             }
 
+            val estimatedBytes = when {
+                track.fileSize > 1024L -> track.fileSize
+                track.duration > 0 -> (track.duration * (track.bitrate.takeIf { it > 0 } ?: 160) * 1000L) / 8L
+                else -> 0L
+            }
+
             newTasks.add(
                 DownloadTask(
                     trackId = track.id,
@@ -142,6 +156,7 @@ class DownloadManager(
                     album = track.album,
                     duration = track.duration,
                     format = track.format,
+                    totalBytes = estimatedBytes,
                     progress = 0,
                     status = DownloadStatus.PENDING
                 )
@@ -160,6 +175,7 @@ class DownloadManager(
     }
 
     private fun startProcessingQueue() {
+        _isCancelled.value = false
         DownloadForegroundService.start(context)
         if (activeJob == null || activeJob?.isCompleted == true) {
             activeJob = scope.launch {
@@ -184,8 +200,8 @@ class DownloadManager(
         val trackId = task.trackId
         updateTask(trackId) { it.copy(status = DownloadStatus.DOWNLOADING, progress = 0) }
 
-        val token = sessionDataStore.getTokenCached() ?: ""
-        val serverUrl = sessionDataStore.getServerUrlCached().trimEnd('/')
+        val token = sessionDataStore.getTokenCached() ?: sessionDataStore.getToken() ?: ""
+        val serverUrl = sessionDataStore.getServerUrlCached().ifBlank { sessionDataStore.getServerUrl() }.trimEnd('/')
         val downloadUrl = "$serverUrl/api/v1/tracks/$trackId/download?token=$token"
         val coverUrl = "$serverUrl/api/v1/tracks/$trackId/cover?token=$token"
 
@@ -196,10 +212,11 @@ class DownloadManager(
         val tempCoverFile = File(downloadStorage.getCoversDir(), "tmp_cov_${trackId}_${System.currentTimeMillis()}.tmp")
 
         try {
-            // 1. Download Audio stream
+            // 1. Download Audio stream with identity encoding to preserve Content-Length
             val audioRequest = Request.Builder()
                 .url(downloadUrl)
                 .addHeader("Authorization", "Bearer $token")
+                .addHeader("Accept-Encoding", "identity")
                 .build()
 
             val audioResponse = okHttpClient.newCall(audioRequest).execute()
@@ -210,27 +227,57 @@ class DownloadManager(
             }
 
             val body = audioResponse.body!!
-            val totalBytes = body.contentLength().coerceAtLeast(1L)
+            val rawContentLength = body.contentLength()
+            val totalBytes = when {
+                rawContentLength > 1024L -> rawContentLength
+                task.totalBytes > 1024L -> task.totalBytes
+                task.duration > 0 -> (task.duration * 160L * 1000L) / 8L
+                else -> 0L
+            }
+
             var downloadedBytes = 0L
+            var lastBytes = 0L
+            var lastReportedTime = System.currentTimeMillis()
+            var lastSpeedCalcTime = System.currentTimeMillis()
+            var currentSpeed = 0L
 
             body.byteStream().use { input ->
                 FileOutputStream(tempAudioFile).use { output ->
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(16384)
                     var read: Int
-                    var lastReportedTime = System.currentTimeMillis()
 
                     while (input.read(buffer).also { read = it } != -1) {
                         output.write(buffer, 0, read)
                         downloadedBytes += read
 
                         val now = System.currentTimeMillis()
-                        if (now - lastReportedTime > 150) {
-                            val pct = ((downloadedBytes.toDouble() / totalBytes.toDouble()) * 92).toInt().coerceIn(0, 92)
+                        val timeDiff = now - lastReportedTime
+
+                        if (timeDiff >= 300) {
+                            val speedTimeDiff = now - lastSpeedCalcTime
+                            if (speedTimeDiff >= 600) {
+                                val bytesDiff = downloadedBytes - lastBytes
+                                currentSpeed = ((bytesDiff.toDouble() / speedTimeDiff.toDouble()) * 1000).toLong().coerceAtLeast(0L)
+                                lastBytes = downloadedBytes
+                                lastSpeedCalcTime = now
+                            }
+
+                            val pct = if (totalBytes > 1024L) {
+                                ((downloadedBytes.toDouble() / totalBytes.toDouble()) * 95).toInt().coerceIn(0, 95)
+                            } else {
+                                0
+                            }
+
+                            val remainingBytes = (totalBytes - downloadedBytes).coerceAtLeast(0L)
+                            val etaSec = if (currentSpeed > 0 && remainingBytes > 0 && totalBytes > 1024L) remainingBytes / currentSpeed else 0L
+
                             updateTask(trackId) {
                                 it.copy(
                                     progress = pct,
                                     downloadedBytes = downloadedBytes,
-                                    totalBytes = totalBytes
+                                    totalBytes = totalBytes,
+                                    speedBytesPerSec = currentSpeed,
+                                    etaSeconds = etaSec
                                 )
                             }
                             lastReportedTime = now
@@ -240,9 +287,16 @@ class DownloadManager(
                 }
             }
 
-            if (tempAudioFile.length() == 0L) {
+            // Integrity and Corrupted File Checks
+            if (!tempAudioFile.exists() || tempAudioFile.length() < 1024L) {
                 tempAudioFile.delete()
-                updateTask(trackId) { it.copy(status = DownloadStatus.ERROR, progress = 100, errorMessage = "Пустой аудиофайл") }
+                updateTask(trackId) { it.copy(status = DownloadStatus.ERROR, progress = 100, errorMessage = "Некорректный аудиофайл") }
+                return@withContext
+            }
+
+            if (rawContentLength > 1024L && tempAudioFile.length() < rawContentLength) {
+                tempAudioFile.delete()
+                updateTask(trackId) { it.copy(status = DownloadStatus.ERROR, progress = 100, errorMessage = "Загрузка не завершена") }
                 return@withContext
             }
 
@@ -298,14 +352,16 @@ class DownloadManager(
                     status = DownloadStatus.COMPLETED,
                     progress = 100,
                     downloadedBytes = targetAudioFile.length(),
-                    totalBytes = targetAudioFile.length()
+                    totalBytes = targetAudioFile.length(),
+                    speedBytesPerSec = 0L,
+                    etaSeconds = 0L
                 )
             }
         } catch (e: Exception) {
             tempAudioFile.delete()
             tempCoverFile.delete()
             if (e is CancellationException) {
-                updateTask(trackId) { it.copy(status = DownloadStatus.ERROR, progress = 100, errorMessage = "Отменено") }
+                updateTask(trackId) { it.copy(status = DownloadStatus.CANCELLED, progress = 0, errorMessage = "Отменено пользователем") }
             } else {
                 val err = e.localizedMessage ?: "Ошибка скачивания"
                 updateTask(trackId) { it.copy(status = DownloadStatus.ERROR, progress = 100, errorMessage = err) }
@@ -329,9 +385,15 @@ class DownloadManager(
         runningTrackJobs.clear()
         activeJob?.cancel()
         activeJob = null
+
+        _isCancelled.value = true
+        _cancelledSavedCount.value = _downloadedTracks.value.size
+
         _tasks.update { list ->
             list.filter { it.status == DownloadStatus.COMPLETED }
         }
+
+        DownloadForegroundService.stop(context)
     }
 
     fun clearCompleted() {

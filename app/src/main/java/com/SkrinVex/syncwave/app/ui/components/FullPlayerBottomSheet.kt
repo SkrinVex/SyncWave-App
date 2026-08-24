@@ -82,6 +82,7 @@ import com.SkrinVex.syncwave.app.ui.theme.StudioBorder
 import com.SkrinVex.syncwave.app.ui.theme.StudioElevated
 import com.SkrinVex.syncwave.app.ui.theme.StudioEmerald
 import com.SkrinVex.syncwave.app.ui.theme.StudioHover
+import com.SkrinVex.syncwave.app.ui.theme.StudioRed
 import com.SkrinVex.syncwave.app.ui.theme.StudioSurface
 import com.SkrinVex.syncwave.app.ui.theme.Zinc100
 import com.SkrinVex.syncwave.app.ui.theme.Zinc300
@@ -124,6 +125,7 @@ fun FullPlayerBottomSheet(
     var seekPosition by remember { mutableFloatStateOf(0f) }
     var isQueueVisible by remember { mutableStateOf(false) }
     var showSpeedDialog by remember { mutableStateOf(false) }
+    var showDeleteDownloadedConfirm by remember { mutableStateOf(false) }
 
     // Double-tap feedback state
     var showRewindFeedback by remember { mutableStateOf(false) }
@@ -669,7 +671,7 @@ fun FullPlayerBottomSheet(
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(StudioEmerald.copy(alpha = 0.15f))
                                     .border(1.dp, StudioEmerald.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                                    .clickable { onDeleteDownloadedTrack?.invoke() }
+                                    .clickable { showDeleteDownloadedConfirm = true }
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -991,6 +993,38 @@ fun FullPlayerBottomSheet(
             confirmButton = {
                 TextButton(onClick = { showSpeedDialog = false }) {
                     Text("Готово", color = StudioAccent, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        )
+    }
+
+    // Confirmation Dialog for removing downloaded track from device
+    if (showDeleteDownloadedConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDownloadedConfirm = false },
+            containerColor = StudioSurface,
+            shape = RoundedCornerShape(18.dp),
+            title = {
+                Text("Удаление с устройства", color = Zinc100, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(
+                    "Трек '${track.title}' скачан на это устройство. Вы действительно хотите удалить его из памяти устройства?",
+                    color = Zinc400,
+                    fontSize = 13.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDeleteDownloadedConfirm = false
+                    onDeleteDownloadedTrack?.invoke()
+                }) {
+                    Text("Удалить", color = StudioRed, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDownloadedConfirm = false }) {
+                    Text("Отмена", color = Zinc400)
                 }
             }
         )

@@ -75,6 +75,16 @@ class SyncViewModel(
                 }
             }
         }
+        viewModelScope.launch {
+            downloadManager.isCancelled.collectLatest { cancelled ->
+                _uiState.update { it.copy(isLastRunCancelled = cancelled) }
+            }
+        }
+        viewModelScope.launch {
+            downloadManager.cancelledSavedCount.collectLatest { count ->
+                _uiState.update { it.copy(cancelledSavedCount = count) }
+            }
+        }
     }
 
     private fun startPolling() {

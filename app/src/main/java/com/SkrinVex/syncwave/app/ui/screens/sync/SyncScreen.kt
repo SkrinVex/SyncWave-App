@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -336,17 +337,33 @@ fun SyncScreen(
                     val completed = uiState.localDownloadTasks.count { it.status == com.SkrinVex.syncwave.app.domain.model.DownloadStatus.COMPLETED }
                     val total = uiState.localDownloadTasks.size
 
-                    Text(
-                        text = "${active.title} — ${active.artist.ifBlank { "SyncWave" }}",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Zinc100,
-                        maxLines = 1
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${active.title} — ${active.artist.ifBlank { "SyncWave" }}",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Zinc100,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        if (active.formattedSpeed.isNotBlank()) {
+                            Text(
+                                text = active.formattedSpeed,
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = StudioEmerald
+                            )
+                        }
+                    }
 
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         LinearProgressIndicator(
-                            progress = { (uiState.localOverallProgress / 100f).coerceIn(0f, 1f) },
+                            progress = { (active.progress / 100f).coerceIn(0f, 1f) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(5.dp)
@@ -359,19 +376,52 @@ fun SyncScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Трек $completed из $total в очереди",
+                                text = "Трек $completed из $total • ${active.downloadedMbFormatted}",
                                 fontSize = 10.sp,
                                 color = Zinc400
                             )
+                            val etaText = if (active.formattedEta.isNotBlank()) "${active.formattedEta} (${active.progress}%)" else "${active.progress}%"
                             Text(
-                                text = "${uiState.localOverallProgress}%",
+                                text = etaText,
                                 fontSize = 10.sp,
                                 fontFamily = FontFamily.Monospace,
                                 color = StudioAccent
                             )
                         }
                     }
-                } else if (!uiState.isLocalDownloading) {
+                } else if (uiState.isLastRunCancelled) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = null,
+                                tint = StudioRed,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Отменено пользователем (${uiState.cancelledSavedCount} скачано)",
+                                fontSize = 11.sp,
+                                color = Zinc300,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        StudioBadge(
+                            text = "ОТМЕНЕНО",
+                            backgroundColor = StudioRed.copy(alpha = 0.15f),
+                            textColor = StudioRed
+                        )
+                    }
+                } else {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,

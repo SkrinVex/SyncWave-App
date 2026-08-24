@@ -4,7 +4,8 @@ enum class DownloadStatus {
     PENDING,
     DOWNLOADING,
     COMPLETED,
-    ERROR
+    ERROR,
+    CANCELLED
 }
 
 data class DownloadedTrack(
@@ -65,9 +66,47 @@ data class DownloadTask(
     val status: DownloadStatus = DownloadStatus.PENDING,
     val errorMessage: String? = null,
     val totalBytes: Long = 0L,
-    val downloadedBytes: Long = 0L
+    val downloadedBytes: Long = 0L,
+    val speedBytesPerSec: Long = 0L,
+    val etaSeconds: Long = 0L
 ) {
     val id: String
         get() = trackId
-}
 
+    val formattedSpeed: String
+        get() {
+            if (speedBytesPerSec <= 0) return ""
+            val kb = speedBytesPerSec / 1024.0
+            val mb = kb / 1024.0
+            return if (mb >= 1.0) {
+                "%.1f МБ/с".format(mb)
+            } else {
+                "%.0f КБ/с".format(kb)
+            }
+        }
+
+    val formattedEta: String
+        get() {
+            if (etaSeconds <= 0) return ""
+            val m = etaSeconds / 60
+            val s = etaSeconds % 60
+            return if (m > 0) {
+                "ETA: %dм %02dс".format(m, s)
+            } else {
+                "ETA: %dс".format(s)
+            }
+        }
+
+    val downloadedMbFormatted: String
+        get() {
+            val dMb = downloadedBytes.toDouble() / (1024 * 1024)
+            val tMb = totalBytes.toDouble() / (1024 * 1024)
+            return if (totalBytes > 1024L) {
+                "%.1f / %.1f МБ".format(dMb, tMb)
+            } else if (downloadedBytes > 0) {
+                "%.1f МБ".format(dMb)
+            } else {
+                "0 МБ"
+            }
+        }
+}

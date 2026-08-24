@@ -62,16 +62,8 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     val session = container.sessionDataStore.getSavedSession()
                     if (session != null && session.token.isNotBlank()) {
-                        // Verify token validity
-                        when (container.getCurrentUserUseCase()) {
-                            is Resource.Success -> {
-                                startDestination = Screen.Main.route
-                            }
-                            is Resource.Error -> {
-                                startDestination = Screen.Auth.route
-                            }
-                            Resource.Loading -> {}
-                        }
+                        // If saved session exists, allow instant access (including offline mode)
+                        startDestination = Screen.Main.route
                     } else {
                         startDestination = Screen.Auth.route
                     }
