@@ -11,19 +11,47 @@ android {
         applicationId = "com.SkrinVex.syncwave.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = (project.findProperty("versionCode") as? String)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("versionName") as? String) ?: "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystorePath = project.findProperty("KEYSTORE_FILE") as? String
+                ?: System.getenv("KEYSTORE_FILE")
+            val keystorePass = project.findProperty("KEYSTORE_PASSWORD") as? String
+                ?: System.getenv("KEYSTORE_PASSWORD")
+            val aliasName = project.findProperty("KEY_ALIAS") as? String
+                ?: System.getenv("KEY_ALIAS")
+            val aliasPass = project.findProperty("KEY_PASSWORD") as? String
+                ?: System.getenv("KEY_PASSWORD")
+
+            if (keystorePath != null && file(keystorePath).exists()) {
+                storeFile = file(keystorePath)
+                storePassword = keystorePass
+                keyAlias = aliasName
+                keyPassword = aliasPass
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null) {
+                signingConfig = releaseSigning
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
+            isMinifyEnabled = false
+            applicationIdSuffix = ".debug"
         }
     }
     compileOptions {

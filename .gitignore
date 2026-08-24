@@ -9,7 +9,14 @@
 /.idea/assetWizardSettings.xml
 .DS_Store
 /build
+app/build
 /captures
 .externalNativeBuild
 .cxx
 local.properties
+
+# Keystore and secrets protection
+*.jks
+*.keystore
+keystore_base64.txt
+dist/
