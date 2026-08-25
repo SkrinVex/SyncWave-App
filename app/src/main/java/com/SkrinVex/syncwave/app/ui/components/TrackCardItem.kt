@@ -49,7 +49,7 @@ import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 @Composable
 fun TrackCardItem(
     track: Track,
-    coverUrl: String,
+    coverModel: Any?,
     isPlaying: Boolean,
     isCurrentTrack: Boolean,
     onClick: () -> Unit,
@@ -60,13 +60,14 @@ fun TrackCardItem(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val imageRequest = remember(coverUrl) {
+    val imageRequest = remember(coverModel) {
         ImageRequest.Builder(context)
-            .data(coverUrl)
+            .data(coverModel)
             .size(256, 256)
             .crossfade(100)
             .build()
     }
+
 
     val backgroundColor = when {
         isSelected -> StudioAccent.copy(alpha = 0.14f)

@@ -306,25 +306,39 @@ class DownloadManager(
             if (targetAudioFile.exists()) targetAudioFile.delete()
             tempAudioFile.renameTo(targetAudioFile)
 
-            // 2. Download Cover art (optional, best effort with short timeout to prevent CDN blocking)
+            // 2. Download Cover art with retry and proper headers
             var savedCoverPath: String? = null
             try {
                 val coverRequest = Request.Builder()
                     .url(coverUrl)
                     .addHeader("Authorization", "Bearer $token")
+                    .addHeader("User-Agent", "SyncWave-Android/1.0")
                     .build()
                 val coverClient = okHttpClient.newBuilder()
-                    .connectTimeout(5, TimeUnit.SECONDS)
-                    .readTimeout(8, TimeUnit.SECONDS)
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(15, TimeUnit.SECONDS)
+                    .followRedirects(true)
+                    .followSslRedirects(true)
                     .build()
-                val coverResponse = coverClient.newCall(coverRequest).execute()
-                if (coverResponse.isSuccessful && coverResponse.body != null) {
+
+                var coverResponse = try { coverClient.newCall(coverRequest).execute() } catch (_: Exception) { null }
+                if (coverResponse == null || !coverResponse.isSuccessful || coverResponse.body == null) {
+                    // Retry once
+                    try {
+                        coverResponse?.close()
+                        coverResponse = coverClient.newCall(coverRequest).execute()
+                    } catch (_: Exception) {
+                        coverResponse = null
+                    }
+                }
+
+                if (coverResponse != null && coverResponse.isSuccessful && coverResponse.body != null) {
                     coverResponse.body!!.byteStream().use { cInput ->
                         FileOutputStream(tempCoverFile).use { cOutput ->
                             cInput.copyTo(cOutput)
                         }
                     }
-                    if (tempCoverFile.length() > 0) {
+                    if (tempCoverFile.length() > 100L) {
                         if (targetCoverFile.exists()) targetCoverFile.delete()
                         tempCoverFile.renameTo(targetCoverFile)
                         savedCoverPath = targetCoverFile.absolutePath
@@ -335,6 +349,7 @@ class DownloadManager(
             } catch (_: Exception) {
                 tempCoverFile.delete()
             }
+
 
             // 3. Register downloaded track
             val downloadedTrack = DownloadedTrack(
@@ -453,6 +468,69 @@ class DownloadManager(
                     enqueueDownloads(missingTracks)
                 }
             }
+
+            // 3. Auto-sync missing covers for already downloaded tracks
+            syncMissingCovers()
+        }
+    }
+
+    /**
+     * Checks all downloaded tracks and downloads missing covers if not on disk.
+     */
+    fun syncMissingCovers() {
+        scope.launch {
+            val allTracks = downloadStorage.getAllTracks()
+            val token = sessionDataStore.getTokenCached() ?: sessionDataStore.getToken() ?: ""
+            val serverUrl = sessionDataStore.getServerUrlCached().ifBlank { sessionDataStore.getServerUrl() }.trimEnd('/')
+            if (token.isBlank() || serverUrl.isBlank()) return@launch
+
+            val coverClient = okHttpClient.newBuilder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .build()
+
+            for (track in allTracks) {
+                val existingCover = downloadStorage.getLocalCoverFile(track.id)
+                if (existingCover != null && existingCover.exists() && existingCover.length() > 100L) {
+                    continue
+                }
+
+                val coverUrl = "$serverUrl/api/v1/tracks/${track.id}/cover?token=$token"
+                val targetCoverFile = downloadStorage.getTargetCoverFile(track.id)
+                val tempCoverFile = File(downloadStorage.getCoversDir(), "tmp_cov_${track.id}_${System.currentTimeMillis()}.tmp")
+
+                try {
+                    val coverRequest = Request.Builder()
+                        .url(coverUrl)
+                        .addHeader("Authorization", "Bearer $token")
+                        .addHeader("User-Agent", "SyncWave-Android/1.0")
+                        .build()
+
+                    val response = coverClient.newCall(coverRequest).execute()
+                    if (response.isSuccessful && response.body != null) {
+                        response.body!!.byteStream().use { cInput ->
+                            FileOutputStream(tempCoverFile).use { cOutput ->
+                                cInput.copyTo(cOutput)
+                            }
+                        }
+                        if (tempCoverFile.length() > 100L) {
+                            if (targetCoverFile.exists()) targetCoverFile.delete()
+                            tempCoverFile.renameTo(targetCoverFile)
+                            downloadStorage.saveDownloadedTrack(track.copy(localCoverPath = targetCoverFile.absolutePath))
+                        } else {
+                            tempCoverFile.delete()
+                        }
+                    } else {
+                        tempCoverFile.delete()
+                    }
+                } catch (_: Exception) {
+                    tempCoverFile.delete()
+                }
+            }
+            refreshDownloadedTracks()
         }
     }
 }
+

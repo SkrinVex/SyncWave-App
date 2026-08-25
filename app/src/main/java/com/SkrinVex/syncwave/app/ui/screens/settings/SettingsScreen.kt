@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
@@ -90,6 +91,7 @@ import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    isOffline: Boolean = false,
     onNavigateToAuth: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -121,6 +123,44 @@ fun SettingsScreen(
             .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Offline Warning Banner
+        if (isOffline) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(StudioEmerald.copy(alpha = 0.12f))
+                    .border(1.dp, StudioEmerald.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudOff,
+                        contentDescription = null,
+                        tint = StudioEmerald,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Оффлайн-режим активен",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Zinc100
+                        )
+                        Text(
+                            text = "Серверные настройки отключены для защиты от рассинхронизации. Управление оффлайн-треками и аудиофокусом доступно.",
+                            fontSize = 11.sp,
+                            color = Zinc400,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+        }
+
         // Header
         Column {
             Text(
@@ -130,7 +170,7 @@ fun SettingsScreen(
                 color = Zinc100
             )
             Text(
-                text = "Параметры системы, YouTube Cookies, хранилище и плеер",
+                text = if (isOffline) "Локальные параметры плеера и оффлайн-хранилища" else "Параметры системы, YouTube Cookies, хранилище и плеер",
                 fontSize = 12.sp,
                 color = Zinc400,
                 modifier = Modifier.padding(top = 2.dp)
@@ -263,7 +303,9 @@ fun SettingsScreen(
                     }
 
                     // Status Badge
-                    val (badgeText, badgeBg, badgeTextColor) = when (uiState.settings.cookiesStatus) {
+                    val (badgeText, badgeBg, badgeTextColor) = if (isOffline) {
+                        Triple("ОФФЛАЙН", StudioElevated, Zinc400)
+                    } else when (uiState.settings.cookiesStatus) {
                         "valid" -> Triple("АКТИВНЫ", StudioEmerald.copy(alpha = 0.15f), StudioEmerald)
                         "expiring_soon" -> Triple("ИСТЕКАЮТ", StudioAccent.copy(alpha = 0.2f), StudioAccent)
                         "expired" -> Triple("ИСТЕКЛИ", StudioRed.copy(alpha = 0.2f), StudioRed)
@@ -280,6 +322,7 @@ fun SettingsScreen(
 
                 // Description
                 val desc = when {
+                    isOffline -> "Управление cookies YouTube и авторизация Google недоступны в оффлайн-режиме."
                     uiState.settings.isCookiesValid -> "Куки авторизации активны. Синхронизация закрытых плейлистов и треков Liked Music работает штатно."
                     uiState.settings.isCookiesExpiringSoon -> "Срок действия cookies YouTube подходит к концу. Рекомендуется обновить их через WebView или загрузить свежий файл."
                     uiState.settings.isCookiesExpired -> "Сессия YouTube истекла. YouTube заблокировал доступ к трекам. Выполните вход через Google WebView для восстановления синхронизации."
@@ -294,7 +337,7 @@ fun SettingsScreen(
                 )
 
                 // Detailed Expiration / Error Banner if any
-                if (uiState.settings.cookiesExpiresAt.isNotBlank() || uiState.settings.cookiesError.isNotBlank()) {
+                if (!isOffline && (uiState.settings.cookiesExpiresAt.isNotBlank() || uiState.settings.cookiesError.isNotBlank())) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -366,6 +409,7 @@ fun SettingsScreen(
                         backgroundColor = StudioAccent,
                         textColor = Zinc100,
                         icon = Icons.Default.Language,
+                        enabled = !isOffline,
                         modifier = Modifier.weight(1f)
                     )
 
@@ -377,23 +421,26 @@ fun SettingsScreen(
                         textColor = Zinc300,
                         icon = Icons.Default.UploadFile,
                         isLoading = uiState.isUploadingCookies,
+                        enabled = !isOffline,
                         modifier = Modifier.weight(1f)
                     )
 
                     if (uiState.settings.hasCookies) {
                         IconButton(
                             onClick = { showDeleteCookiesDialog = true },
+                            enabled = !isOffline,
                             modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = "Удалить cookies",
-                                tint = StudioRed,
+                                tint = if (isOffline) Zinc500 else StudioRed,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
                     }
                 }
+
             }
         }
 
@@ -634,10 +681,11 @@ fun SettingsScreen(
                     }
 
                     StudioBadge(
-                        text = "ONLINE",
-                        backgroundColor = StudioEmerald.copy(alpha = 0.15f),
-                        textColor = StudioEmerald
+                        text = if (isOffline) "ОФФЛАЙН" else "ONLINE",
+                        backgroundColor = if (isOffline) StudioElevated else StudioEmerald.copy(alpha = 0.15f),
+                        textColor = if (isOffline) Zinc400 else StudioEmerald
                     )
+
                 }
 
                 // Server URL Box
@@ -664,6 +712,7 @@ fun SettingsScreen(
                     ) {
                         IconButton(
                             onClick = { viewModel.testConnection() },
+                            enabled = !isOffline,
                             modifier = Modifier.size(28.dp)
                         ) {
                             if (uiState.isTestingConnection) {
@@ -676,11 +725,12 @@ fun SettingsScreen(
                                 Icon(
                                     imageVector = Icons.Default.Refresh,
                                     contentDescription = "Проверить",
-                                    tint = Zinc400,
+                                    tint = if (isOffline) Zinc500 else Zinc400,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
+
 
                         IconButton(
                             onClick = { viewModel.openEditServerUrlModal() },

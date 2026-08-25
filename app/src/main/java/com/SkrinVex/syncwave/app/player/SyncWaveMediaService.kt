@@ -168,13 +168,15 @@ class SyncWaveMediaService : MediaSessionService() {
         }
 
         // Asynchronously load album artwork bitmap if needed
-        val token = playerManager.let { (application as? SyncWaveApplication)?.container?.sessionDataStore?.getTokenCached() ?: "" }
-        val coverUrl = (application as? SyncWaveApplication)?.container?.trackRepository?.getCoverUrl(track.id, token)
+        val container = (application as? SyncWaveApplication)?.container
+        val token = container?.sessionDataStore?.getTokenCached() ?: ""
+        val coverModel = container?.trackRepository?.getCoverModel(track.id, token)
 
-        if (coverUrl != null && coverUrl != lastLoadedCoverUrl) {
-            lastLoadedCoverUrl = coverUrl
+        val modelKey = coverModel?.toString()
+        if (coverModel != null && modelKey != lastLoadedCoverUrl) {
+            lastLoadedCoverUrl = modelKey
             val imageRequest = ImageRequest.Builder(this)
-                .data(coverUrl)
+                .data(coverModel)
                 .target { drawable ->
                     (drawable as? BitmapDrawable)?.bitmap?.let { bmp ->
                         cachedArtworkBitmap = bmp
@@ -187,6 +189,7 @@ class SyncWaveMediaService : MediaSessionService() {
                 .build()
             Coil.imageLoader(this).enqueue(imageRequest)
         }
+
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {

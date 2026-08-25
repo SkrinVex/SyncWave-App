@@ -65,7 +65,7 @@ import com.SkrinVex.syncwave.app.ui.theme.Zinc500
 @Composable
 fun TrackRowItem(
     track: Track,
-    coverUrl: String,
+    coverModel: Any?,
     isPlaying: Boolean,
     isCurrentTrack: Boolean,
     index: Int,
@@ -83,13 +83,14 @@ fun TrackRowItem(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val imageRequest = remember(coverUrl) {
+    val imageRequest = remember(coverModel) {
         ImageRequest.Builder(context)
-            .data(coverUrl)
+            .data(coverModel)
             .size(128, 128)
             .crossfade(100)
             .build()
     }
+
 
     val backgroundColor = when {
         isSelected -> StudioAccent.copy(alpha = 0.14f)

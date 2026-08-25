@@ -14,8 +14,10 @@ import kotlinx.coroutines.withContext
 
 class TrackRepositoryImpl(
     private val apiService: SyncWaveApiService,
-    private val sessionDataStore: SessionDataStore
+    private val sessionDataStore: SessionDataStore,
+    private val downloadStorage: com.SkrinVex.syncwave.app.data.local.DownloadStorage
 ) : TrackRepository {
+
 
     override suspend fun getTracks(
         query: String?,
@@ -120,4 +122,10 @@ class TrackRepositoryImpl(
         val serverUrl = sessionDataStore.getServerUrlCached().trimEnd('/')
         return "$serverUrl/api/v1/tracks/$trackId/cover?token=$token"
     }
+
+    override fun getCoverModel(trackId: String, token: String): Any {
+        val remoteUrl = getCoverUrl(trackId, token)
+        return downloadStorage.getCoverModel(trackId, remoteUrl)
+    }
 }
+

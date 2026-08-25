@@ -585,13 +585,13 @@ fun LibraryScreen(
                         contentType = { _, _ -> "track_card" }
                     ) { index, track ->
                         val isCurrent = currentTrackId == track.id
-                        val coverUrl = SyncWaveApplication.instance.container.trackRepository.getCoverUrl(track.id, token ?: "")
+                        val coverModel = SyncWaveApplication.instance.container.trackRepository.getCoverModel(track.id, token ?: "")
                         val isSelected = uiState.selectedTrackIds.contains(track.id)
                         val isDownloaded = uiState.downloadedTrackIds.contains(track.id)
 
                         TrackCardItem(
                             track = track,
-                            coverUrl = coverUrl,
+                            coverModel = coverModel,
                             isPlaying = isPlaying,
                             isCurrentTrack = isCurrent,
                             onClick = { viewModel.playTrack(track, index) },
@@ -632,15 +632,16 @@ fun LibraryScreen(
                         contentType = { _, _ -> "track_row" }
                     ) { index, track ->
                         val isCurrent = currentTrackId == track.id
-                        val coverUrl = SyncWaveApplication.instance.container.trackRepository.getCoverUrl(track.id, token ?: "")
+                        val coverModel = SyncWaveApplication.instance.container.trackRepository.getCoverModel(track.id, token ?: "")
                         val isSelected = uiState.selectedTrackIds.contains(track.id)
                         val isDownloaded = uiState.downloadedTrackIds.contains(track.id)
 
                         TrackRowItem(
                             track = track,
-                            coverUrl = coverUrl,
+                            coverModel = coverModel,
                             isPlaying = isPlaying,
                             isCurrentTrack = isCurrent,
+
                             index = index + 1,
                             onClick = { viewModel.playTrack(track, index) },
                             onDelete = { viewModel.confirmDeleteTrack(track) },

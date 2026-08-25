@@ -59,7 +59,7 @@ import kotlin.math.roundToInt
 @Composable
 fun MiniPlayerBar(
     playerState: PlayerState,
-    coverUrl: String,
+    coverModel: Any?,
     onExpand: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -72,13 +72,14 @@ fun MiniPlayerBar(
     } else 0f
 
     val context = LocalContext.current
-    val imageRequest = remember(coverUrl) {
+    val imageRequest = remember(coverModel) {
         ImageRequest.Builder(context)
-            .data(coverUrl)
+            .data(coverModel)
             .size(128, 128)
             .crossfade(100)
             .build()
     }
+
 
     val coroutineScope = rememberCoroutineScope()
     val offsetY = remember { Animatable(0f) }

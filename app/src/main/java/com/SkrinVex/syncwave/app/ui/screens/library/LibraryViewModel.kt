@@ -30,7 +30,8 @@ class LibraryViewModel(
     private val deleteTrackUseCase: DeleteTrackUseCase,
     private val batchDeleteTracksUseCase: BatchDeleteTracksUseCase,
     val downloadManager: DownloadManager,
-    val playerManager: AudioPlayerManager
+    val playerManager: AudioPlayerManager,
+    val networkConnectivityObserver: com.SkrinVex.syncwave.app.data.remote.NetworkConnectivityObserver
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(LibraryUiState())
@@ -38,14 +39,45 @@ class LibraryViewModel(
 
     private var searchJob: Job? = null
     private var isFetchingPage = false
+    private var wasOffline = false
 
     companion object {
         const val PAGE_SIZE = 300
     }
 
     init {
+        observeNetworkConnectivity()
         observeDownloadedTracks()
         loadData()
+    }
+
+    private fun observeNetworkConnectivity() {
+        viewModelScope.launch {
+            networkConnectivityObserver.isOnline.collectLatest { isOnline ->
+                if (!isOnline) {
+                    wasOffline = true
+                    val localTracks = downloadManager.downloadedTracks.value
+                    val domainTracks = localTracks.map { it.toTrack() }
+                    _uiState.update {
+                        it.copy(
+                            tracks = domainTracks,
+                            totalTracks = domainTracks.size,
+                            currentPage = 1,
+                            hasMore = false,
+                            isOfflineMode = true,
+                            isLoading = false,
+                            isRefreshing = false,
+                            errorMessage = null
+                        )
+                    }
+                } else if (wasOffline) {
+                    wasOffline = false
+                    _uiState.update { it.copy(isOfflineMode = false) }
+                    loadData(isRefresh = true)
+                    downloadManager.syncMissingCovers()
+                }
+            }
+        }
     }
 
     private fun observeDownloadedTracks() {
@@ -55,6 +87,7 @@ class LibraryViewModel(
             }
         }
     }
+
 
     fun loadData(isRefresh: Boolean = false) {
         viewModelScope.launch {
@@ -392,7 +425,8 @@ class LibraryViewModel(
         private val deleteTrackUseCase: DeleteTrackUseCase,
         private val batchDeleteTracksUseCase: BatchDeleteTracksUseCase,
         private val downloadManager: DownloadManager,
-        private val playerManager: AudioPlayerManager
+        private val playerManager: AudioPlayerManager,
+        private val networkConnectivityObserver: com.SkrinVex.syncwave.app.data.remote.NetworkConnectivityObserver
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -404,8 +438,10 @@ class LibraryViewModel(
                 deleteTrackUseCase,
                 batchDeleteTracksUseCase,
                 downloadManager,
-                playerManager
+                playerManager,
+                networkConnectivityObserver
             ) as T
         }
     }
+
 }

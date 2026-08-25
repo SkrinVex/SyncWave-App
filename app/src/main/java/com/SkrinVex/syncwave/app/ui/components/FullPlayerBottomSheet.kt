@@ -96,9 +96,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun FullPlayerBottomSheet(
     playerState: PlayerState,
-    coverUrl: String,
-    getTrackCoverUrl: (String) -> String,
+    coverModel: Any?,
+    getTrackCoverModel: (String) -> Any,
     onDismiss: () -> Unit,
+
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrevious: () -> Unit,
@@ -321,11 +322,12 @@ fun FullPlayerBottomSheet(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     AsyncImage(
-                                        model = coverUrl,
+                                        model = coverModel,
                                         contentDescription = track.title,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()
                                     )
+
                                     if (playerState.isPlaying) {
                                         Box(
                                             modifier = Modifier
@@ -384,7 +386,7 @@ fun FullPlayerBottomSheet(
                     ) {
                         itemsIndexed(playerState.queue, key = { index, t -> "${t.id}_$index" }) { idx, qTrack ->
                             val isCurrent = idx == playerState.currentIndex
-                            val qCoverUrl = getTrackCoverUrl(qTrack.id)
+                            val qCoverModel = getTrackCoverModel(qTrack.id)
 
                             Row(
                                 modifier = Modifier
@@ -410,7 +412,7 @@ fun FullPlayerBottomSheet(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (isCurrent) {
-                                            StudioEqualizerAnimation(
+                                             StudioEqualizerAnimation(
                                                 isPlaying = playerState.isPlaying,
                                                 maxHeight = 11.dp,
                                                 barWidth = 2.dp,
@@ -437,12 +439,13 @@ fun FullPlayerBottomSheet(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         AsyncImage(
-                                            model = qCoverUrl,
+                                            model = qCoverModel,
                                             contentDescription = qTrack.title,
                                             contentScale = ContentScale.Crop,
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     }
+
 
                                     Spacer(modifier = Modifier.width(10.dp))
 
@@ -536,11 +539,12 @@ fun FullPlayerBottomSheet(
                         contentAlignment = Alignment.Center
                     ) {
                         AsyncImage(
-                            model = coverUrl,
+                            model = coverModel,
                             contentDescription = track.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
+
 
                         // Left Rewind Double-Tap Feedback
                         androidx.compose.animation.AnimatedVisibility(

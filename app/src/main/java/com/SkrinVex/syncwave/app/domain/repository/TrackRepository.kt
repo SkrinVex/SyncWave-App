@@ -30,4 +30,6 @@ interface TrackRepository {
     suspend fun batchDeleteTracks(ids: List<String>): Resource<Unit>
     fun getStreamUrl(trackId: String, token: String): String
     fun getCoverUrl(trackId: String, token: String): String
+    fun getCoverModel(trackId: String, token: String): Any
 }
+

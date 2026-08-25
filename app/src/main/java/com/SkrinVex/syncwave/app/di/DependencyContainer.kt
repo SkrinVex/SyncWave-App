@@ -110,13 +110,23 @@ class DependencyContainer(val context: Context) {
         retrofit.create(SyncWaveApiService::class.java)
     }
 
+    // Network Connectivity Observer
+    val networkConnectivityObserver: com.SkrinVex.syncwave.app.data.remote.NetworkConnectivityObserver by lazy {
+        com.SkrinVex.syncwave.app.data.remote.NetworkConnectivityObserver(context)
+    }
+
+    // Download Storage & Manager
+    val downloadStorage: com.SkrinVex.syncwave.app.data.local.DownloadStorage by lazy {
+        com.SkrinVex.syncwave.app.data.local.DownloadStorage(context, gson)
+    }
+
     // Repositories
     val authRepository: AuthRepository by lazy {
         AuthRepositoryImpl(apiService, sessionDataStore, unauthenticatedOkHttpClient, gson)
     }
 
     val trackRepository: TrackRepository by lazy {
-        TrackRepositoryImpl(apiService, sessionDataStore)
+        TrackRepositoryImpl(apiService, sessionDataStore, downloadStorage)
     }
 
     val playlistRepository: PlaylistRepository by lazy {
@@ -141,11 +151,6 @@ class DependencyContainer(val context: Context) {
         com.SkrinVex.syncwave.app.cookies.GoogleAuthManager(settingsRepository)
     }
 
-    // Download Storage & Manager
-    val downloadStorage: com.SkrinVex.syncwave.app.data.local.DownloadStorage by lazy {
-        com.SkrinVex.syncwave.app.data.local.DownloadStorage(context, gson)
-    }
-
     val downloadManager: com.SkrinVex.syncwave.app.download.DownloadManager by lazy {
         com.SkrinVex.syncwave.app.download.DownloadManager(
             context = context,
@@ -155,6 +160,7 @@ class DependencyContainer(val context: Context) {
             okHttpClient = downloadOkHttpClient
         )
     }
+
 
     // Audio Player Manager
     val audioPlayerManager: AudioPlayerManager by lazy {

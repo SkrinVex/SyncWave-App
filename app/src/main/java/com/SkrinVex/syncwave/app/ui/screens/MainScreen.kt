@@ -33,6 +33,7 @@ import com.SkrinVex.syncwave.app.SyncWaveApplication
 import com.SkrinVex.syncwave.app.domain.model.DownloadStatus
 import com.SkrinVex.syncwave.app.ui.components.FullPlayerBottomSheet
 import com.SkrinVex.syncwave.app.ui.components.MiniPlayerBar
+import com.SkrinVex.syncwave.app.ui.components.OfflinePlaceholderScreen
 import com.SkrinVex.syncwave.app.ui.navigation.Screen
 import com.SkrinVex.syncwave.app.ui.screens.library.LibraryScreen
 import com.SkrinVex.syncwave.app.ui.screens.library.LibraryViewModel
@@ -66,6 +67,7 @@ fun MainScreen(
     val token by container.sessionDataStore.tokenFlow.collectAsStateWithLifecycle(initialValue = "")
     val downloadedTrackIds by downloadManager.downloadedTrackIds.collectAsStateWithLifecycle(initialValue = emptySet())
     val downloadTasks by downloadManager.tasks.collectAsStateWithLifecycle(initialValue = emptyList())
+    val isOnline by container.networkConnectivityObserver.isOnline.collectAsStateWithLifecycle(initialValue = true)
 
     Scaffold(
         bottomBar = {
@@ -79,10 +81,10 @@ fun MainScreen(
 
                 // Mini Player Bar
                 if (playerState.currentTrack != null) {
-                    val coverUrl = container.trackRepository.getCoverUrl(playerState.currentTrack!!.id, token ?: "")
+                    val coverModel = container.trackRepository.getCoverModel(playerState.currentTrack!!.id, token ?: "")
                     MiniPlayerBar(
                         playerState = playerState,
-                        coverUrl = coverUrl,
+                        coverModel = coverModel,
                         onExpand = { isFullPlayerOpen = true },
                         onPlayPause = { playerManager.togglePlayPause() },
                         onNext = { playerManager.playNext() },
@@ -163,36 +165,59 @@ fun MainScreen(
                             container.deleteTrackUseCase,
                             container.batchDeleteTracksUseCase,
                             downloadManager,
-                            playerManager
+                            playerManager,
+                            container.networkConnectivityObserver
                         )
                     )
                     LibraryScreen(viewModel = viewModel)
                 }
 
                 composable(Screen.Playlists.route) {
-                    val viewModel: PlaylistsViewModel = viewModel(
-                        factory = PlaylistsViewModel.Factory(
-                            container.getPlaylistsUseCase,
-                            container.createPlaylistUseCase,
-                            container.deletePlaylistUseCase,
-                            container.syncPlaylistUseCase
+                    if (!isOnline) {
+                        OfflinePlaceholderScreen(
+                            tabTitle = "Плейлисты",
+                            onGoToLibrary = {
+                                navController.navigate(Screen.Library.route) {
+                                    popUpTo(Screen.Library.route) { inclusive = false }
+                                }
+                            }
                         )
-                    )
-                    PlaylistsScreen(viewModel = viewModel)
+                    } else {
+                        val viewModel: PlaylistsViewModel = viewModel(
+                            factory = PlaylistsViewModel.Factory(
+                                container.getPlaylistsUseCase,
+                                container.createPlaylistUseCase,
+                                container.deletePlaylistUseCase,
+                                container.syncPlaylistUseCase
+                            )
+                        )
+                        PlaylistsScreen(viewModel = viewModel)
+                    }
                 }
 
                 composable(Screen.Sync.route) {
-                    val viewModel: SyncViewModel = viewModel(
-                        factory = SyncViewModel.Factory(
-                            container.getSyncProgressUseCase,
-                            container.getSyncLogsUseCase,
-                            container.triggerSyncUseCase,
-                            container.cancelSyncUseCase,
-                            container.clearSyncLogsUseCase,
-                            downloadManager
+                    if (!isOnline) {
+                        OfflinePlaceholderScreen(
+                            tabTitle = "Синхронизация",
+                            onGoToLibrary = {
+                                navController.navigate(Screen.Library.route) {
+                                    popUpTo(Screen.Library.route) { inclusive = false }
+                                }
+                            }
                         )
-                    )
-                    SyncScreen(viewModel = viewModel)
+                    } else {
+                        val viewModel: SyncViewModel = viewModel(
+                            factory = SyncViewModel.Factory(
+                                container.getSyncProgressUseCase,
+                                container.getSyncLogsUseCase,
+                                container.triggerSyncUseCase,
+                                container.cancelSyncUseCase,
+                                container.clearSyncLogsUseCase,
+                                downloadManager
+                            )
+                        )
+                        SyncScreen(viewModel = viewModel)
+                    }
                 }
 
                 composable(Screen.Settings.route) {
@@ -212,6 +237,7 @@ fun MainScreen(
                     )
                     SettingsScreen(
                         viewModel = viewModel,
+                        isOffline = !isOnline,
                         onNavigateToAuth = onNavigateToAuth
                     )
                 }
@@ -222,7 +248,7 @@ fun MainScreen(
     // Expandable Full Player Bottom Sheet
     if (isFullPlayerOpen && playerState.currentTrack != null) {
         val currentTrack = playerState.currentTrack!!
-        val coverUrl = container.trackRepository.getCoverUrl(currentTrack.id, token ?: "")
+        val coverModel = container.trackRepository.getCoverModel(currentTrack.id, token ?: "")
         val isDownloaded = downloadedTrackIds.contains(currentTrack.id)
         val currentTask = downloadTasks.firstOrNull { it.id == currentTrack.id }
         val isDownloading = currentTask?.status == DownloadStatus.DOWNLOADING || currentTask?.status == DownloadStatus.PENDING
@@ -230,8 +256,8 @@ fun MainScreen(
 
         FullPlayerBottomSheet(
             playerState = playerState,
-            coverUrl = coverUrl,
-            getTrackCoverUrl = { trackId -> container.trackRepository.getCoverUrl(trackId, token ?: "") },
+            coverModel = coverModel,
+            getTrackCoverModel = { trackId -> container.trackRepository.getCoverModel(trackId, token ?: "") },
             onDismiss = { isFullPlayerOpen = false },
             onPlayPause = { playerManager.togglePlayPause() },
             onNext = { playerManager.playNext() },
@@ -254,3 +280,4 @@ fun MainScreen(
         )
     }
 }
+

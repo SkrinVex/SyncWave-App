@@ -34,12 +34,25 @@ class DownloadStorage(
                     val type = object : TypeToken<List<DownloadedTrack>>() {}.type
                     val list: List<DownloadedTrack> = gson.fromJson(json, type) ?: emptyList()
                     memoryRegistry.clear()
+                    var changed = false
                     for (item in list) {
                         // Verify the audio file still exists on disk
                         val audioFile = File(item.localFilePath)
                         if (audioFile.exists() && audioFile.length() > 0) {
-                            memoryRegistry[item.id] = item
+                            var currentCover = item.localCoverPath
+                            if (currentCover == null || !File(currentCover).exists() || File(currentCover).length() == 0L) {
+                                val targetCover = getTargetCoverFile(item.id)
+                                if (targetCover.exists() && targetCover.length() > 0) {
+                                    currentCover = targetCover.absolutePath
+                                    changed = true
+                                }
+                            }
+                            val updatedItem = if (currentCover != item.localCoverPath) item.copy(localCoverPath = currentCover) else item
+                            memoryRegistry[item.id] = updatedItem
                         }
+                    }
+                    if (changed) {
+                        persistRegistry()
                     }
                 }
             }
@@ -70,7 +83,15 @@ class DownloadStorage(
 
     @Synchronized
     fun saveDownloadedTrack(downloadedTrack: DownloadedTrack) {
-        memoryRegistry[downloadedTrack.id] = downloadedTrack
+        val targetCover = getTargetCoverFile(downloadedTrack.id)
+        val finalCoverPath = if (downloadedTrack.localCoverPath != null && File(downloadedTrack.localCoverPath).exists() && File(downloadedTrack.localCoverPath).length() > 0) {
+            downloadedTrack.localCoverPath
+        } else if (targetCover.exists() && targetCover.length() > 0) {
+            targetCover.absolutePath
+        } else {
+            downloadedTrack.localCoverPath
+        }
+        memoryRegistry[downloadedTrack.id] = downloadedTrack.copy(localCoverPath = finalCoverPath)
         persistRegistry()
     }
 
@@ -88,6 +109,8 @@ class DownloadStorage(
                     val coverFile = File(path)
                     if (coverFile.exists()) coverFile.delete()
                 }
+                val defaultCover = getTargetCoverFile(trackId)
+                if (defaultCover.exists()) defaultCover.delete()
             } catch (_: Exception) {}
 
             persistRegistry()
@@ -146,10 +169,44 @@ class DownloadStorage(
     }
 
     fun getLocalCoverFile(trackId: String): File? {
-        val track = memoryRegistry[trackId] ?: return null
-        val path = track.localCoverPath ?: return null
-        val file = File(path)
-        return if (file.exists() && file.length() > 0) file else null
+        val track = memoryRegistry[trackId]
+        if (track?.localCoverPath != null) {
+            val file = File(track.localCoverPath)
+            if (file.exists() && file.length() > 0) return file
+        }
+
+        val targetCover = getTargetCoverFile(trackId)
+        if (targetCover.exists() && targetCover.length() > 0) {
+            if (track != null && track.localCoverPath != targetCover.absolutePath) {
+                memoryRegistry[trackId] = track.copy(localCoverPath = targetCover.absolutePath)
+                persistRegistry()
+            }
+            return targetCover
+        }
+
+        // Search for any other image extension in coversDir
+        try {
+            val matches = coversDir.listFiles { file -> file.name.startsWith(trackId) && file.length() > 0 }
+            if (!matches.isNullOrEmpty()) {
+                val found = matches.first()
+                if (track != null) {
+                    memoryRegistry[trackId] = track.copy(localCoverPath = found.absolutePath)
+                    persistRegistry()
+                }
+                return found
+            }
+        } catch (_: Exception) {}
+
+        return null
+    }
+
+    fun getCoverModel(trackId: String, fallbackUrl: String): Any {
+        val localFile = getLocalCoverFile(trackId)
+        return if (localFile != null && localFile.exists() && localFile.length() > 0) {
+            localFile
+        } else {
+            fallbackUrl
+        }
     }
 
     fun getTotalStorageBytes(): Long {
@@ -169,4 +226,5 @@ class DownloadStorage(
         }
     }
 }
+
 
