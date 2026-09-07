@@ -77,12 +77,16 @@ class DownloadManager(
     private val runningTrackJobs = ConcurrentHashMap<String, Job>()
 
     init {
-        refreshDownloadedTracks()
+        // Registry loading only reads memory now; pruning stale entries and
+        // rediscovering covers hits the disk, so keep it on the IO scope.
+        scope.launch {
+            downloadStorage.revalidate()
+            refreshDownloadedTracks()
+        }
     }
 
     fun refreshDownloadedTracks() {
-        val all = downloadStorage.getAllTracks()
-        _downloadedTracks.value = all
+        _downloadedTracks.value = downloadStorage.getAllTracks()
     }
 
     fun isDownloaded(trackId: String): Boolean {
@@ -423,18 +427,38 @@ class DownloadManager(
         }
     }
 
-    fun deleteDownloadedTrack(trackId: String): Boolean {
+    /**
+     * Deleting files and rewriting the registry is disk work, so it runs on the IO scope.
+     * The observable list is updated straight away so the row disappears on this frame.
+     */
+    fun deleteDownloadedTrack(trackId: String) {
         cancelDownload(trackId)
-        val success = downloadStorage.removeTrack(trackId)
-        refreshDownloadedTracks()
-        return success
+        _downloadedTracks.update { list -> list.filter { it.id != trackId } }
+        scope.launch {
+            downloadStorage.removeTrack(trackId)
+            refreshDownloadedTracks()
+        }
     }
 
-    fun deleteAllDownloadedTracks(): Boolean {
+    /** Batch variant: one registry write for the whole selection, not one per track. */
+    fun deleteDownloadedTracks(trackIds: Collection<String>) {
+        if (trackIds.isEmpty()) return
+        val idSet = trackIds.toSet()
+        idSet.forEach { cancelDownload(it) }
+        _downloadedTracks.update { list -> list.filter { it.id !in idSet } }
+        scope.launch {
+            downloadStorage.removeTracks(idSet)
+            refreshDownloadedTracks()
+        }
+    }
+
+    fun deleteAllDownloadedTracks() {
         cancelAll()
-        val success = downloadStorage.clearAll()
-        refreshDownloadedTracks()
-        return success
+        _downloadedTracks.value = emptyList()
+        scope.launch {
+            downloadStorage.clearAll()
+            refreshDownloadedTracks()
+        }
     }
 
     /**
@@ -446,18 +470,21 @@ class DownloadManager(
         if (serverTracks.isEmpty()) return
 
         scope.launch {
+            // Catches files removed outside the app since the last check.
+            downloadStorage.revalidate()
+
             val serverIds = serverTracks.map { it.id }.toSet()
 
             // 1. Check auto-delete orphaned downloads
             val autoDeleteEnabled = sessionDataStore.isAutoDeleteOrphanedDownloadsCached()
             if (autoDeleteEnabled) {
-                val localTracks = downloadStorage.getAllTracks()
-                for (localTrack in localTracks) {
-                    if (localTrack.id !in serverIds) {
-                        downloadStorage.removeTrack(localTrack.id)
-                    }
+                val orphaned = downloadStorage.getAllTracks()
+                    .map { it.id }
+                    .filter { it !in serverIds }
+                if (orphaned.isNotEmpty()) {
+                    downloadStorage.removeTracks(orphaned)
+                    refreshDownloadedTracks()
                 }
-                refreshDownloadedTracks()
             }
 
             // 2. Check auto-download missing tracks

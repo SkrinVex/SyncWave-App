@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,7 +41,9 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 val container = (application as SyncWaveApplication).container
 
-                var startDestination by remember { mutableStateOf<String?>(null) }
+                // Survives configuration changes, so a rotation no longer flashes the
+                // splash screen while the saved session is re-read.
+                var startDestination by rememberSaveable { mutableStateOf<String?>(null) }
 
                 // Request POST_NOTIFICATIONS runtime permission on Android 13+ (API 33+)
                 val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -94,6 +97,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        (application as? SyncWaveApplication)?.container?.audioPlayerManager?.release()
+        // The player is application-scoped and cannot be rebuilt once released. Releasing
+        // it on every onDestroy killed playback on a rotation, a theme switch or a move
+        // into multi-window, and left the app unable to play anything until a restart.
+        // Only tear it down when the user is actually leaving.
+        if (isFinishing && !isChangingConfigurations) {
+            (application as? SyncWaveApplication)?.container?.audioPlayerManager?.release()
+        }
     }
 }

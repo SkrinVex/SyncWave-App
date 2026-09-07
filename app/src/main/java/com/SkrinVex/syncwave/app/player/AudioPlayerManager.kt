@@ -44,6 +44,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 @OptIn(UnstableApi::class)
@@ -61,6 +62,15 @@ class AudioPlayerManager(
     private var progressJob: Job? = null
     private var simpleCache: SimpleCache? = null
 
+    /**
+     * Playback requested before the player finished building. Replayed once it is ready,
+     * so a tap during the first moments of app start is not swallowed.
+     */
+    private var pendingPlayerAction: (() -> Unit)? = null
+
+    /** Set by [release]; stops the async init from resurrecting a player after teardown. */
+    private var isReleased = false
+
     private val _playerState = MutableStateFlow(PlayerState())
     val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
 
@@ -68,13 +78,36 @@ class AudioPlayerManager(
         .map { it.currentTrack?.id }
         .distinctUntilChanged()
 
+    /**
+     * Emits only when the playing track changes, not on every position tick, so screens
+     * that just need "what is playing" are not recomposed four times a second.
+     */
+    val currentTrackFlow: Flow<Track?> = _playerState
+        .map { it.currentTrack }
+        .distinctUntilChanged { old, new -> old?.id == new?.id }
+
     val isPlayingFlow: Flow<Boolean> = _playerState
         .map { it.isPlaying }
         .distinctUntilChanged()
 
     init {
         createNotificationChannel()
-        setupCacheAndPlayer()
+        // Opening the 500 MB media cache reads its whole index off the disk. Doing that
+        // on the main thread stalled the first frames of the app, so build the cache on
+        // IO and assemble the player on Main once it is ready.
+        scope.launch {
+            val cache = withContext(Dispatchers.IO) { createMediaCache() }
+            if (isReleased) {
+                try { cache?.release() } catch (_: Exception) {}
+                return@launch
+            }
+            simpleCache = cache
+            buildPlayer(cache)
+            pendingPlayerAction?.let { action ->
+                pendingPlayerAction = null
+                action()
+            }
+        }
         observeAudioFocusSetting()
     }
 
@@ -94,14 +127,18 @@ class AudioPlayerManager(
         }
     }
 
-    private fun setupCacheAndPlayer() {
-        try {
+    private fun createMediaCache(): SimpleCache? {
+        return try {
             val cacheDir = File(context.cacheDir, "media_cache")
             val evictor = LeastRecentlyUsedCacheEvictor(500L * 1024 * 1024) // 500 MB Audio Cache
             val databaseProvider = StandaloneDatabaseProvider(context)
-            simpleCache = SimpleCache(cacheDir, evictor, databaseProvider)
-        } catch (_: Exception) {}
+            SimpleCache(cacheDir, evictor, databaseProvider)
+        } catch (_: Exception) {
+            null
+        }
+    }
 
+    private fun buildPlayer(cache: SimpleCache?) {
         val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15000)
@@ -109,9 +146,9 @@ class AudioPlayerManager(
 
         val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 
-        val dataSourceFactory = if (simpleCache != null) {
+        val dataSourceFactory = if (cache != null) {
             CacheDataSource.Factory()
-                .setCache(simpleCache!!)
+                .setCache(cache)
                 .setUpstreamDataSourceFactory(defaultDataSourceFactory)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         } else {
@@ -323,13 +360,18 @@ class AudioPlayerManager(
             )
         }
 
-        exoPlayer?.let { player ->
-            player.stop()
-            player.clearMediaItems()
-            player.setMediaItem(mediaItem)
-            player.prepare()
-            player.play()
+        val player = exoPlayer
+        if (player == null) {
+            // Player still being assembled - replay this request when it is ready.
+            pendingPlayerAction = { playTrack(track, customQueue) }
+            return
         }
+
+        player.stop()
+        player.clearMediaItems()
+        player.setMediaItem(mediaItem)
+        player.prepare()
+        player.play()
 
         startMediaServiceSafely()
     }
@@ -396,7 +438,10 @@ class AudioPlayerManager(
     }
 
     fun togglePlayPause() {
-        val player = exoPlayer ?: return
+        val player = exoPlayer ?: run {
+            pendingPlayerAction = { togglePlayPause() }
+            return
+        }
         if (player.isPlaying) {
             player.pause()
         } else {
@@ -587,6 +632,8 @@ class AudioPlayerManager(
     }
 
     fun release() {
+        isReleased = true
+        pendingPlayerAction = null
         stopProgressUpdates()
         mediaSession?.release()
         mediaSession = null

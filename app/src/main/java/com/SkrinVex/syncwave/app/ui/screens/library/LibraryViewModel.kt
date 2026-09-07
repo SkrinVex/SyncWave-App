@@ -1,5 +1,6 @@
 package com.SkrinVex.syncwave.app.ui.screens.library
 
+import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -22,6 +23,11 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/**
+ * Marked stable so the Compose compiler can memoize the per-row callback lambdas that
+ * capture it; without it every row rebuilt its lambdas and lost skipping.
+ */
+@Stable
 class LibraryViewModel(
     private val getTracksUseCase: GetTracksUseCase,
     private val getAllReadyTracksUseCase: GetAllReadyTracksUseCase,
@@ -38,7 +44,13 @@ class LibraryViewModel(
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
     private var searchJob: Job? = null
-    private var isFetchingPage = false
+
+    /**
+     * In-flight track request. A new page-1 request (search, sort, filter) cancels it;
+     * pagination requests are dropped while it runs. The previous boolean guard silently
+     * swallowed searches and sort changes that arrived during a page load.
+     */
+    private var fetchJob: Job? = null
     private var wasOffline = false
 
     companion object {
@@ -100,6 +112,7 @@ class LibraryViewModel(
             fetchStats()
             fetchPlaylists()
             fetchTracks(page = 1, isInitial = true)
+            fetchJob?.join()
 
             _uiState.update { it.copy(isLoading = false, isRefreshing = false) }
         }
@@ -126,10 +139,18 @@ class LibraryViewModel(
     }
 
     fun fetchTracks(page: Int = 1, isInitial: Boolean = false) {
-        if (isFetchingPage) return
-        isFetchingPage = true
+        val active = fetchJob
+        if (active != null && active.isActive) {
+            if (page > 1) return          // pagination: let the running request finish
+            active.cancel()               // new query/sort/filter: the old result is stale
+        }
+        if (page == 1) {
+            // A cancelled page request never clears its own flag, which would wedge
+            // pagination for good.
+            _uiState.update { it.copy(isLoadingMore = false) }
+        }
 
-        viewModelScope.launch {
+        fetchJob = viewModelScope.launch {
             val state = _uiState.value
 
             if (state.showOnlyDownloaded) {
@@ -155,7 +176,6 @@ class LibraryViewModel(
                         errorMessage = null
                     )
                 }
-                isFetchingPage = false
                 return@launch
             }
 
@@ -227,7 +247,6 @@ class LibraryViewModel(
                 }
                 Resource.Loading -> {}
             }
-            isFetchingPage = false
         }
     }
 
@@ -238,7 +257,8 @@ class LibraryViewModel(
 
     fun loadNextPage() {
         val state = _uiState.value
-        if (state.hasMore && !isFetchingPage && !state.isLoading && !state.isLoadingMore) {
+        val busy = fetchJob?.isActive == true
+        if (state.hasMore && !busy && !state.isLoading && !state.isLoadingMore) {
             _uiState.update { it.copy(isLoadingMore = true) }
             fetchTracks(page = state.currentPage + 1)
         }
@@ -328,8 +348,8 @@ class LibraryViewModel(
             when (batchDeleteTracksUseCase(selectedIds)) {
                 is Resource.Success -> {
                     val idSet = selectedIds.toSet()
-                    // Also delete from local device if downloaded
-                    idSet.forEach { downloadManager.deleteDownloadedTrack(it) }
+                    // Also delete from local device if downloaded (one registry write)
+                    downloadManager.deleteDownloadedTracks(idSet)
 
                     _uiState.update { state ->
                         state.copy(

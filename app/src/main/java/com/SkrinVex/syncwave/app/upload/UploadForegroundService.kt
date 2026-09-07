@@ -23,6 +23,25 @@ import kotlinx.coroutines.launch
 class UploadForegroundService : Service() {
 
     private val serviceScope = CoroutineScope(Dispatchers.Main + Job())
+
+    // Built once instead of per task emission - uploads emit progress several times a
+    // second and each rebuild was a binder call on the main thread.
+    private val notificationManager: NotificationManager by lazy {
+        getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    }
+
+    private val contentPendingIntent: PendingIntent by lazy {
+        PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
+    private var lastNotificationUpdateTime = 0L
     private var observeJob: Job? = null
 
     companion object {
@@ -67,22 +86,13 @@ class UploadForegroundService : Service() {
     }
 
     private fun buildInitialNotification(): Notification {
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Загрузка треков в SyncWave")
             .setContentText("Подготовка к отправке...")
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setProgress(100, 0, true)
             .setOngoing(true)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(contentPendingIntent)
             .build()
     }
 
@@ -107,17 +117,16 @@ class UploadForegroundService : Service() {
 
                 val progress = uploadManager.overallProgress.value
 
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                val pendingIntent = PendingIntent.getActivity(
-                    this@UploadForegroundService,
-                    0,
-                    Intent(this@UploadForegroundService, MainActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    },
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                )
+                val pendingIntent = contentPendingIntent
 
                 if (isUploading) {
+                    // Throttle to at most one notification update per 800ms.
+                    val now = System.currentTimeMillis()
+                    if (now - lastNotificationUpdateTime < 800 && progress != 0 && progress != 100) {
+                        return@collect
+                    }
+                    lastNotificationUpdateTime = now
+
                     val activeTask = tasks.firstOrNull { it.status == UploadStatus.UPLOADING || it.status == UploadStatus.PROCESSING }
                     val contentText = if (activeTask != null) {
                         "${activeTask.name} ($completed/$total)"

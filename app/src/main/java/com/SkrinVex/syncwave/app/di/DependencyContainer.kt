@@ -1,6 +1,7 @@
 package com.SkrinVex.syncwave.app.di
 
 import android.content.Context
+import com.SkrinVex.syncwave.app.BuildConfig
 import com.SkrinVex.syncwave.app.data.local.SessionDataStore
 import com.SkrinVex.syncwave.app.data.remote.api.SyncWaveApiService
 import com.SkrinVex.syncwave.app.data.remote.interceptor.AuthInterceptor
@@ -63,9 +64,19 @@ class DependencyContainer(val context: Context) {
         DynamicBaseUrlInterceptor(sessionDataStore)
     }
 
+    /**
+     * Header logging is debug-only: in release it cost time on every call and printed the
+     * `Authorization` bearer token into logcat, where any log reader could pick it up.
+     */
     val loggingInterceptor: HttpLoggingInterceptor by lazy {
         HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.HEADERS
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.HEADERS
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+            redactHeader("Authorization")
+            redactHeader("Cookie")
         }
     }
 

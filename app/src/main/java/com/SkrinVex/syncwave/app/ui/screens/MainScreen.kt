@@ -57,7 +57,12 @@ fun MainScreen(
     val container = SyncWaveApplication.instance.container
     val playerManager = container.audioPlayerManager
     val downloadManager = container.downloadManager
-    val playerState by playerManager.playerState.collectAsStateWithLifecycle()
+
+    // Only the *identity* of the playing track is observed here. Position, buffering and
+    // download progress tick several times a second; collecting them at this level used to
+    // recompose the whole Scaffold, the navigation bar and the NavHost on every tick.
+    // They are collected inside the player hosts below instead.
+    val currentTrack by playerManager.currentTrackFlow.collectAsStateWithLifecycle(initialValue = null)
 
     var isFullPlayerOpen by remember { mutableStateOf(false) }
 
@@ -65,8 +70,6 @@ fun MainScreen(
     val currentRoute = navBackStackEntry?.destination?.route ?: Screen.Library.route
 
     val token by container.sessionDataStore.tokenFlow.collectAsStateWithLifecycle(initialValue = "")
-    val downloadedTrackIds by downloadManager.downloadedTrackIds.collectAsStateWithLifecycle(initialValue = emptySet())
-    val downloadTasks by downloadManager.tasks.collectAsStateWithLifecycle(initialValue = emptyList())
     val isOnline by container.networkConnectivityObserver.isOnline.collectAsStateWithLifecycle(initialValue = true)
 
     Scaffold(
@@ -80,15 +83,13 @@ fun MainScreen(
                 )
 
                 // Mini Player Bar
-                if (playerState.currentTrack != null) {
-                    val coverModel = container.trackRepository.getCoverModel(playerState.currentTrack!!.id, token ?: "")
-                    MiniPlayerBar(
-                        playerState = playerState,
-                        coverModel = coverModel,
-                        onExpand = { isFullPlayerOpen = true },
-                        onPlayPause = { playerManager.togglePlayPause() },
-                        onNext = { playerManager.playNext() },
-                        onDismiss = { playerManager.stopPlayback() }
+                currentTrack?.let { track ->
+                    MiniPlayerHost(
+                        playerManager = playerManager,
+                        coverModel = remember(track.id, token) {
+                            container.trackRepository.getCoverModel(track.id, token ?: "")
+                        },
+                        onExpand = { isFullPlayerOpen = true }
                     )
                 }
 
@@ -246,38 +247,97 @@ fun MainScreen(
     }
 
     // Expandable Full Player Bottom Sheet
-    if (isFullPlayerOpen && playerState.currentTrack != null) {
-        val currentTrack = playerState.currentTrack!!
-        val coverModel = container.trackRepository.getCoverModel(currentTrack.id, token ?: "")
-        val isDownloaded = downloadedTrackIds.contains(currentTrack.id)
-        val currentTask = downloadTasks.firstOrNull { it.id == currentTrack.id }
-        val isDownloading = currentTask?.status == DownloadStatus.DOWNLOADING || currentTask?.status == DownloadStatus.PENDING
-        val downloadProgress = currentTask?.progress ?: 0
-
-        FullPlayerBottomSheet(
-            playerState = playerState,
-            coverModel = coverModel,
-            getTrackCoverModel = { trackId -> container.trackRepository.getCoverModel(trackId, token ?: "") },
-            onDismiss = { isFullPlayerOpen = false },
-            onPlayPause = { playerManager.togglePlayPause() },
-            onNext = { playerManager.playNext() },
-            onPrevious = { playerManager.playPrevious() },
-            onSeek = { targetMs -> playerManager.seekTo(targetMs) },
-            onToggleShuffle = { playerManager.toggleShuffle() },
-            onCycleRepeat = { playerManager.cycleRepeatMode() },
-            onRewind10 = { playerManager.rewind10Seconds() },
-            onForward10 = { playerManager.forward10Seconds() },
-            onSetPlaybackSpeed = { speed -> playerManager.setPlaybackSpeed(speed) },
-            onSelectQueueTrack = { index -> playerManager.skipToQueueItem(index) },
-            onRemoveFromQueue = { index -> playerManager.removeFromQueue(index) },
-            onReshuffleQueue = { playerManager.reshuffleQueue() },
-            onClearQueue = { playerManager.clearQueue() },
-            isDownloaded = isDownloaded,
-            isDownloading = isDownloading,
-            downloadProgress = downloadProgress,
-            onDownloadTrack = { downloadManager.enqueueDownload(currentTrack) },
-            onDeleteDownloadedTrack = { downloadManager.deleteDownloadedTrack(currentTrack.id) }
+    val fullPlayerTrack = currentTrack
+    if (isFullPlayerOpen && fullPlayerTrack != null) {
+        FullPlayerHost(
+            playerManager = playerManager,
+            downloadManager = downloadManager,
+            track = fullPlayerTrack,
+            token = token ?: "",
+            onDismiss = { isFullPlayerOpen = false }
         )
     }
+}
+
+/**
+ * Owns the frequently changing player state so that only the mini player recomposes
+ * while playback position advances.
+ */
+@Composable
+private fun MiniPlayerHost(
+    playerManager: com.SkrinVex.syncwave.app.player.AudioPlayerManager,
+    coverModel: Any,
+    onExpand: () -> Unit
+) {
+    val playerState by playerManager.playerState.collectAsStateWithLifecycle()
+    if (playerState.currentTrack == null) return
+
+    MiniPlayerBar(
+        playerState = playerState,
+        coverModel = coverModel,
+        onExpand = onExpand,
+        onPlayPause = { playerManager.togglePlayPause() },
+        onNext = { playerManager.playNext() },
+        onDismiss = { playerManager.stopPlayback() }
+    )
+}
+
+/**
+ * Same idea for the expanded player: position updates and download progress stay
+ * contained in this composable instead of invalidating the whole screen.
+ */
+@Composable
+private fun FullPlayerHost(
+    playerManager: com.SkrinVex.syncwave.app.player.AudioPlayerManager,
+    downloadManager: com.SkrinVex.syncwave.app.download.DownloadManager,
+    track: com.SkrinVex.syncwave.app.domain.model.Track,
+    token: String,
+    onDismiss: () -> Unit
+) {
+    val container = SyncWaveApplication.instance.container
+    val playerState by playerManager.playerState.collectAsStateWithLifecycle()
+    val downloadedTrackIds by downloadManager.downloadedTrackIds.collectAsStateWithLifecycle(initialValue = emptySet())
+    val downloadTasks by downloadManager.tasks.collectAsStateWithLifecycle(initialValue = emptyList())
+
+    if (playerState.currentTrack == null) return
+
+    val coverModel = remember(track.id, token) {
+        container.trackRepository.getCoverModel(track.id, token)
+    }
+    // Cover lookups are memory-only, but keeping one lambda identity avoids
+    // re-running them for every queue row on each recomposition.
+    val getTrackCoverModel = remember(token) {
+        { trackId: String -> container.trackRepository.getCoverModel(trackId, token) }
+    }
+
+    val isDownloaded = downloadedTrackIds.contains(track.id)
+    val currentTask = downloadTasks.firstOrNull { it.id == track.id }
+    val isDownloading = currentTask?.status == DownloadStatus.DOWNLOADING || currentTask?.status == DownloadStatus.PENDING
+    val downloadProgress = currentTask?.progress ?: 0
+
+    FullPlayerBottomSheet(
+        playerState = playerState,
+        coverModel = coverModel,
+        getTrackCoverModel = getTrackCoverModel,
+        onDismiss = onDismiss,
+        onPlayPause = { playerManager.togglePlayPause() },
+        onNext = { playerManager.playNext() },
+        onPrevious = { playerManager.playPrevious() },
+        onSeek = { targetMs -> playerManager.seekTo(targetMs) },
+        onToggleShuffle = { playerManager.toggleShuffle() },
+        onCycleRepeat = { playerManager.cycleRepeatMode() },
+        onRewind10 = { playerManager.rewind10Seconds() },
+        onForward10 = { playerManager.forward10Seconds() },
+        onSetPlaybackSpeed = { speed -> playerManager.setPlaybackSpeed(speed) },
+        onSelectQueueTrack = { index -> playerManager.skipToQueueItem(index) },
+        onRemoveFromQueue = { index -> playerManager.removeFromQueue(index) },
+        onReshuffleQueue = { playerManager.reshuffleQueue() },
+        onClearQueue = { playerManager.clearQueue() },
+        isDownloaded = isDownloaded,
+        isDownloading = isDownloading,
+        downloadProgress = downloadProgress,
+        onDownloadTrack = { downloadManager.enqueueDownload(track) },
+        onDeleteDownloadedTrack = { downloadManager.deleteDownloadedTrack(track.id) }
+    )
 }
 

@@ -54,6 +54,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.SkrinVex.syncwave.app.ui.components.StudioBadge
 import com.SkrinVex.syncwave.app.ui.components.StudioCard
@@ -86,9 +87,22 @@ fun SyncScreen(
         else -> uiState.logs
     }
 
+    // Poll only while this screen is actually on screen.
+    LifecycleResumeEffect(viewModel) {
+        viewModel.startPolling()
+        onPauseOrDispose { viewModel.stopPolling() }
+    }
+
+    // Follow new logs only when the user is already at the bottom, otherwise every poll
+    // yanked the list out from under them mid-scroll.
     LaunchedEffect(filteredLogs.size) {
-        if (filteredLogs.isNotEmpty()) {
-            listState.animateScrollToItem(filteredLogs.size - 1)
+        if (filteredLogs.isEmpty()) return@LaunchedEffect
+        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+        // Layout still describes the previous list here, so allow for a small burst of
+        // new entries arriving at once.
+        val wasAtBottom = lastVisible < 0 || lastVisible >= filteredLogs.size - 6
+        if (wasAtBottom) {
+            listState.scrollToItem(filteredLogs.size - 1)
         }
     }
 
@@ -588,7 +602,7 @@ fun SyncScreen(
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(filteredLogs) { log ->
+                    items(filteredLogs, key = { it.id }) { log ->
                         val badgeColor = when (log.level.lowercase()) {
                             "error" -> StudioRed
                             "warn", "warning" -> StudioWarn

@@ -36,7 +36,6 @@ class SyncViewModel(
     private var pollingJob: Job? = null
 
     init {
-        startPolling()
         observeLocalDownloads()
     }
 
@@ -87,8 +86,13 @@ class SyncViewModel(
         }
     }
 
-    private fun startPolling() {
-        pollingJob?.cancel()
+    /**
+     * Starts the 2s progress/log poll. Driven by the screen's lifecycle: this used to run
+     * for the whole life of the ViewModel, so it kept hitting the server and churning UI
+     * state while the user was on another tab or the app was in the background.
+     */
+    fun startPolling() {
+        if (pollingJob?.isActive == true) return
         pollingJob = viewModelScope.launch {
             while (isActive) {
                 fetchProgress()
@@ -96,6 +100,11 @@ class SyncViewModel(
                 delay(2000L) // 2s polling like web
             }
         }
+    }
+
+    fun stopPolling() {
+        pollingJob?.cancel()
+        pollingJob = null
     }
 
     private suspend fun fetchProgress() {
@@ -186,8 +195,7 @@ class SyncViewModel(
 
     override fun onCleared() {
         super.onCleared()
-        pollingJob?.cancel()
-        pollingJob = null
+        stopPolling()
     }
 
     class Factory(

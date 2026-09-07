@@ -62,6 +62,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -105,11 +106,23 @@ fun LibraryScreen(
 
     var showSortMenu by remember { mutableStateOf(false) }
 
+    // Hoisted out of the lazy item bodies: reading these off uiState inside each row made
+    // every row's content depend on the whole ui state object.
+    val tracks = uiState.tracks
+    val downloadedTrackIds = uiState.downloadedTrackIds
+    val selectedTrackIds = uiState.selectedTrackIds
+    val isSelectionMode = uiState.isSelectionMode
+    val trackRepository = SyncWaveApplication.instance.container.trackRepository
+
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
 
+    // Read through a holder so the scroll watchers below never restart. Keying them on
+    // hasMore/isLoadingMore tore down and rebuilt the snapshotFlow on every page load.
+    val latestState by rememberUpdatedState(uiState)
+
     // Smooth Infinite scroll detection for List View using snapshotFlow
-    LaunchedEffect(listState, uiState.hasMore, uiState.isLoadingMore) {
+    LaunchedEffect(listState) {
         snapshotFlow {
             val layoutInfo = listState.layoutInfo
             val total = layoutInfo.totalItemsCount
@@ -118,14 +131,14 @@ fun LibraryScreen(
         }
             .distinctUntilChanged()
             .collect { shouldLoad ->
-                if (shouldLoad && uiState.hasMore && !uiState.isLoadingMore) {
+                if (shouldLoad && latestState.hasMore && !latestState.isLoadingMore) {
                     viewModel.loadNextPage()
                 }
             }
     }
 
     // Smooth Infinite scroll detection for Grid View using snapshotFlow
-    LaunchedEffect(gridState, uiState.hasMore, uiState.isLoadingMore) {
+    LaunchedEffect(gridState) {
         snapshotFlow {
             val layoutInfo = gridState.layoutInfo
             val total = layoutInfo.totalItemsCount
@@ -134,7 +147,7 @@ fun LibraryScreen(
         }
             .distinctUntilChanged()
             .collect { shouldLoad ->
-                if (shouldLoad && uiState.hasMore && !uiState.isLoadingMore) {
+                if (shouldLoad && latestState.hasMore && !latestState.isLoadingMore) {
                     viewModel.loadNextPage()
                 }
             }
@@ -580,23 +593,26 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     itemsIndexed(
-                        items = uiState.tracks,
+                        items = tracks,
                         key = { _, track -> track.id },
                         contentType = { _, _ -> "track_card" }
                     ) { index, track ->
                         val isCurrent = currentTrackId == track.id
-                        val coverModel = SyncWaveApplication.instance.container.trackRepository.getCoverModel(track.id, token ?: "")
-                        val isSelected = uiState.selectedTrackIds.contains(track.id)
-                        val isDownloaded = uiState.downloadedTrackIds.contains(track.id)
+                        val isDownloaded = downloadedTrackIds.contains(track.id)
+                        val coverModel = remember(track.id, token, isDownloaded) {
+                            trackRepository.getCoverModel(track.id, token ?: "")
+                        }
 
                         TrackCardItem(
                             track = track,
                             coverModel = coverModel,
-                            isPlaying = isPlaying,
+                            // Only the playing row cares about this flag; passing the global
+                            // value recomposed every visible row on each play/pause.
+                            isPlaying = isPlaying && isCurrent,
                             isCurrentTrack = isCurrent,
                             onClick = { viewModel.playTrack(track, index) },
-                            isSelectionMode = uiState.isSelectionMode,
-                            isSelected = isSelected,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = selectedTrackIds.contains(track.id),
                             onLongClick = { viewModel.toggleTrackSelection(track.id) },
                             isDownloaded = isDownloaded
                         )
@@ -627,19 +643,22 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     itemsIndexed(
-                        items = uiState.tracks,
+                        items = tracks,
                         key = { _, track -> track.id },
                         contentType = { _, _ -> "track_row" }
                     ) { index, track ->
                         val isCurrent = currentTrackId == track.id
-                        val coverModel = SyncWaveApplication.instance.container.trackRepository.getCoverModel(track.id, token ?: "")
-                        val isSelected = uiState.selectedTrackIds.contains(track.id)
-                        val isDownloaded = uiState.downloadedTrackIds.contains(track.id)
+                        val isDownloaded = downloadedTrackIds.contains(track.id)
+                        val coverModel = remember(track.id, token, isDownloaded) {
+                            trackRepository.getCoverModel(track.id, token ?: "")
+                        }
 
                         TrackRowItem(
                             track = track,
                             coverModel = coverModel,
-                            isPlaying = isPlaying,
+                            // Only the playing row cares about this flag; passing the global
+                            // value recomposed every visible row on each play/pause.
+                            isPlaying = isPlaying && isCurrent,
                             isCurrentTrack = isCurrent,
 
                             index = index + 1,
@@ -647,8 +666,8 @@ fun LibraryScreen(
                             onDelete = { viewModel.confirmDeleteTrack(track) },
                             onAddToQueue = { viewModel.addToQueue(track) },
                             onPlayNext = { viewModel.playNext(track) },
-                            isSelectionMode = uiState.isSelectionMode,
-                            isSelected = isSelected,
+                            isSelectionMode = isSelectionMode,
+                            isSelected = selectedTrackIds.contains(track.id),
                             onLongClick = { viewModel.toggleTrackSelection(track.id) },
                             isDownloaded = isDownloaded,
                             onDownload = { viewModel.downloadTrack(track) },

@@ -25,6 +25,23 @@ class DownloadForegroundService : Service() {
     private var observeJob: Job? = null
     private var lastNotificationUpdateTime = 0L
 
+    // Built once. These were re-created on every task emission - roughly three binder
+    // round-trips a second on the main thread for the whole length of a download run.
+    private val notificationManager: NotificationManager by lazy {
+        getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    }
+
+    private val contentPendingIntent: PendingIntent by lazy {
+        PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
     companion object {
         const val CHANNEL_ID = "syncwave_download_channel"
         const val NOTIFICATION_ID = 2002
@@ -101,22 +118,13 @@ class DownloadForegroundService : Service() {
     }
 
     private fun buildInitialNotification(): Notification {
-        val pendingIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Скачивание треков в память устройства")
             .setContentText("Подготовка к скачиванию...")
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setProgress(100, 0, true)
             .setOngoing(true)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(contentPendingIntent)
             .build()
     }
 
@@ -139,15 +147,7 @@ class DownloadForegroundService : Service() {
                 }
 
                 val progress = downloadManager.overallProgress.value
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                val pendingIntent = PendingIntent.getActivity(
-                    this@DownloadForegroundService,
-                    0,
-                    Intent(this@DownloadForegroundService, MainActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    },
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                )
+                val pendingIntent = contentPendingIntent
 
                 val now = System.currentTimeMillis()
 
